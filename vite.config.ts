@@ -34,8 +34,8 @@ export default defineConfig({
         start_url: '.',
         scope: '.',
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }
+          { src: '/weblogo-square-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/weblogo-square-512.png', sizes: '192x192', type: 'image/png', purpose: 'any' }
         ],
         // File Handling API — lets the installed PWA open .gconfiguration and
         // .gproducts files directly (e.g. double-click in Outlook, Finder, Explorer)
@@ -46,7 +46,7 @@ export default defineConfig({
             accept: {
               'application/octet-stream': ['.gconfiguration', '.gproducts']
             },
-            icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }],
+            icons: [{ src: '/weblogo-square-512.png', sizes: '512x512', type: 'image/png' }],
             launch_type: 'single-client'
           }
         ]

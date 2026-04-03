@@ -78,7 +78,12 @@ export function App() {
   return (
     <>
       <header className="app-header">
-        <h1>Trilion GPC Viewer</h1>
+        <img
+          src={`${import.meta.env.BASE_URL}trilion-logo-2017_RGB-white-medium.png`}
+          alt="Trilion"
+          className="header-logo"
+        />
+        <span className="header-app-name">GPC Viewer</span>
         {loadedFilename && (
           <span className="filename" title={loadedFilename}>
             {loadedFilename}
@@ -157,7 +162,13 @@ export function App() {
       </main>
 
       <footer className="app-footer">
-        v{__APP_VERSION__}
+        <span className="footer-version">v{__APP_VERSION__}</span>
+        <span className="footer-legal">
+          For authorized use only. Information contained herein is proprietary and confidential.
+          Redistribution or sharing of any data viewed through this tool is strictly prohibited
+          without a direct NDA with ZEISS and/or Trilion Quality Systems.
+          Use at your own risk — no warranties expressed or implied.
+        </span>
       </footer>
       <InstallBanner />
     </>

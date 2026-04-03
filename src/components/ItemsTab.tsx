@@ -29,30 +29,32 @@ export function ItemsTab({ order }: ItemsTabProps) {
     <div className="items-tab">
       <div className="items-toolbar">
         <button
-          className="toolbar-icon-btn"
+          className="toolbar-pill-btn"
           onClick={() => setExpanded(new Set(expandableKeys))}
           disabled={allExpanded || expandableKeys.length === 0}
-          title="Expand all"
-          aria-label="Expand all"
         >
-          {/* Two chevrons pointing outward = expand */}
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="7 11 12 6 17 11" />
-            <polyline points="7 13 12 18 17 13" />
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="21" y1="10" x2="7" y2="10" />
+            <line x1="21" y1="6" x2="3" y2="6" />
+            <line x1="21" y1="14" x2="3" y2="14" />
+            <line x1="21" y1="18" x2="7" y2="18" />
+            <polyline points="3 10 7 6 3 6" />
           </svg>
+          Expand all
         </button>
         <button
-          className="toolbar-icon-btn"
+          className="toolbar-pill-btn"
           onClick={() => setExpanded(new Set())}
           disabled={!anyExpanded}
-          title="Collapse all"
-          aria-label="Collapse all"
         >
-          {/* Two chevrons pointing inward = collapse */}
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="7 6 12 11 17 6" />
-            <polyline points="7 18 12 13 17 18" />
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <line x1="21" y1="10" x2="7" y2="10" />
+            <line x1="21" y1="6" x2="3" y2="6" />
+            <line x1="21" y1="14" x2="3" y2="14" />
+            <line x1="21" y1="18" x2="7" y2="18" />
+            <polyline points="7 6 3 10 7 10" />
           </svg>
+          Collapse all
         </button>
       </div>
       <ConfigItemsTable order={order} expanded={expanded} onToggle={toggleItem} />

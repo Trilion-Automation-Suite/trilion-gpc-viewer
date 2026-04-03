@@ -7,30 +7,34 @@
 .items-toolbar {
   display: flex;
   justify-content: flex-end;
-  gap: 4px;
+  gap: 6px;
 }
 
-.toolbar-icon-btn {
-  display: flex;
+.toolbar-pill-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
+  gap: 5px;
+  padding: 5px 13px;
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text-muted);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 500;
   cursor: pointer;
+  box-shadow: var(--glass-shadow);
   transition: background 0.12s, color 0.12s;
-  padding: 0;
+  white-space: nowrap;
 }
 
-.toolbar-icon-btn:hover:not(:disabled) {
-  background: var(--bg-card-alt);
+.toolbar-pill-btn:hover:not(:disabled) {
   color: var(--accent);
+  background: var(--accent-hover);
 }
 
-.toolbar-icon-btn:disabled {
-  opacity: 0.3;
+.toolbar-pill-btn:disabled {
+  opacity: 0.35;
   cursor: default;
 }
