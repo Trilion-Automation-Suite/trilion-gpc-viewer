@@ -2,7 +2,7 @@ import { useRef, useState, DragEvent, ChangeEvent, KeyboardEvent } from 'react'
 import './FilePicker.css'
 
 interface FilePickerProps {
-  onFile: (file: File) => void
+  onFile: (file: File, handle?: FileSystemFileHandle) => void
 }
 
 export function FilePicker({ onFile }: FilePickerProps) {
@@ -23,11 +23,21 @@ export function FilePicker({ onFile }: FilePickerProps) {
     setDragOver(false)
   }
 
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
+  async function handleDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault()
     setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file) onFile(file)
+    const dtItem = e.dataTransfer.items[0]
+    let handle: FileSystemFileHandle | undefined
+    if (dtItem && 'getAsFileSystemHandle' in dtItem) {
+      try {
+        const h = await (dtItem as DataTransferItem & {
+          getAsFileSystemHandle(): Promise<FileSystemHandle | null>
+        }).getAsFileSystemHandle()
+        if (h?.kind === 'file') handle = h as FileSystemFileHandle
+      } catch { /* API unsupported or permission denied */ }
+    }
+    const file = dtItem?.getAsFile() ?? e.dataTransfer.files[0]
+    if (file) onFile(file, handle)
   }
 
   function handleChange(e: ChangeEvent<HTMLInputElement>) {

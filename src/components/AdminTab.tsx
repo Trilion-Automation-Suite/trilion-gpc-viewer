@@ -8,6 +8,8 @@ interface AdminTabProps {
   onChange?: (patch: Partial<OrderAdministration>) => void
 }
 
+const ADDRESS_TYPES = ['Customer', 'GOM Partner', 'Order Process Center', 'Other Address'] as const
+
 function formatAddress(street: string, streetTwo: string, streetThree: string, poBox: string, city: string, state: string, zip: string, country: string): string {
   return [
     street,
@@ -29,7 +31,7 @@ export function AdminTab({ admin, isEditing, onChange }: AdminTabProps) {
         <EditSection
           title="Invoice"
           fields={[
-            { label: 'Address Type',   value: admin.invoiceAddressType,    onChange: ch('invoiceAddressType') },
+            { label: 'Address Type', value: admin.invoiceAddressType, onChange: ch('invoiceAddressType'), type: 'radio' as const, options: ADDRESS_TYPES },
             { label: 'Account Number', value: admin.invoiceAccountNumber,  onChange: ch('invoiceAccountNumber') },
             { label: 'Company',        value: admin.invoiceCompanyName,    onChange: ch('invoiceCompanyName') },
             { label: 'Company 2',      value: admin.invoiceCompanyNameTwo, onChange: ch('invoiceCompanyNameTwo') },
@@ -50,7 +52,7 @@ export function AdminTab({ admin, isEditing, onChange }: AdminTabProps) {
         <EditSection
           title="Shipping"
           fields={[
-            { label: 'Address Type',         value: admin.shippingAddressType,         onChange: ch('shippingAddressType') },
+            { label: 'Address Type', value: admin.shippingAddressType, onChange: ch('shippingAddressType'), type: 'radio' as const, options: ADDRESS_TYPES },
             { label: 'Account Number',        value: admin.shippingAccountNumber,       onChange: ch('shippingAccountNumber') },
             { label: 'Company',              value: admin.shippingCompanyName,         onChange: ch('shippingCompanyName') },
             { label: 'Company 2',            value: admin.shippingCompanyNameTwo,      onChange: ch('shippingCompanyNameTwo') },

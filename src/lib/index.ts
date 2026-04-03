@@ -25,7 +25,7 @@ function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof bu
  * Reads a .gconfiguration File, decrypts it, unpacks the OPC container,
  * and parses the order XML into a structured ParseResult.
  */
-export async function loadGpcFile(file: File): Promise<ParseResult> {
+export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle): Promise<ParseResult> {
   // 1. Read file bytes
   const buffer = await file.arrayBuffer()
 
@@ -76,6 +76,7 @@ export async function loadGpcFile(file: File): Promise<ParseResult> {
     sourceFile: file.name,
     rawOrderXml: orderXml,
     rawDecryptedBuffer: decrypted,
+    fileHandle,
   }
 }
 

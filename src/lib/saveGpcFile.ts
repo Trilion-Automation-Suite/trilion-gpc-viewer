@@ -16,7 +16,8 @@ export async function saveGpcFile(
   rawDecryptedBuffer: ArrayBuffer,
   rawOrderXml: string,
   order: OrderSummary,
-  sourceFilename: string
+  sourceFilename: string,
+  fileHandle?: FileSystemFileHandle
 ): Promise<void> {
   // 1. Patch order.xml DOM with edited values
   const patchedXml = patchOrderXml(rawOrderXml, order)
@@ -27,7 +28,19 @@ export async function saveGpcFile(
   // 3. Re-encrypt with AES-128-CBC
   const encryptedBuffer = await encryptGpcFile(newZipBuffer)
 
-  // 4. Trigger browser download
+  // 4. Write back — prefer in-place overwrite via File System Access API if a handle was supplied
+  if (fileHandle) {
+    try {
+      const writable = await fileHandle.createWritable()
+      await writable.write(encryptedBuffer)
+      await writable.close()
+      return
+    } catch {
+      // Permission denied or API unsupported — fall through to download
+    }
+  }
+
+  // 5. Fall back: trigger browser download
   const blob = new Blob([encryptedBuffer], { type: 'application/octet-stream' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

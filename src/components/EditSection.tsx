@@ -18,6 +18,13 @@ export type EditField =
       onChange: (v: boolean) => void
       type: 'checkbox'
     }
+  | {
+      label: string
+      value: string
+      onChange: (v: string) => void
+      type: 'radio'
+      options: readonly string[]
+    }
 
 interface EditSectionProps {
   title?: string
@@ -41,6 +48,24 @@ export function EditSection({ title, fields }: EditSectionProps) {
                 className="edit-checkbox"
                 aria-label={f.label}
               />
+            </div>
+          ) : f.type === 'radio' ? (
+            <div key={f.label} className="edit-row edit-row--radio">
+              <span className="edit-label">{f.label}</span>
+              <div className="edit-radio-group">
+                {f.options.map((opt) => (
+                  <label key={opt} className="edit-radio-item">
+                    <input
+                      type="radio"
+                      name={`ef-${f.label}`}
+                      value={opt}
+                      checked={f.value === opt}
+                      onChange={() => f.onChange(opt)}
+                    />
+                    {opt}
+                  </label>
+                ))}
+              </div>
             </div>
           ) : (
             <div key={f.label} className="edit-row">

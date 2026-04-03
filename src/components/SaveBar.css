@@ -1,90 +1,41 @@
-/* SaveBar — sticky bottom bar for unsaved-changes state */
+/* UnsavedBanner — full-width amber strip below the header */
 
-.save-bar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 200;
-  background: var(--header-bg);
+.unsaved-banner {
+  background: rgba(245, 158, 11, 0.10);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.28);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.22);
-  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 20px;
+  font-size: 0.8rem;
 }
 
-.save-bar-indicator {
+.unsaved-banner-dot {
   display: inline-block;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: #f59e0b;
   flex-shrink: 0;
-  animation: save-bar-pulse 2s ease-in-out infinite;
+  animation: unsaved-pulse 2s ease-in-out infinite;
 }
 
-@keyframes save-bar-pulse {
+@keyframes unsaved-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.45; }
 }
 
-.save-bar-message {
-  font-size: 0.8rem;
+.unsaved-banner-text {
   font-weight: 600;
   color: #f59e0b;
   flex-shrink: 0;
 }
 
-.save-bar-filename {
+.unsaved-banner-file {
   font-size: 0.78rem;
-  color: #a8c0d0;
-  flex: 1;
-  min-width: 0;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.save-bar-actions {
-  display: flex;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.save-bar-btn {
-  border-radius: 8px;
-  padding: 7px 14px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background 0.15s, opacity 0.15s;
-  line-height: 1;
-}
-
-.save-bar-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.save-bar-btn--ghost {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  color: #fff;
-}
-
-.save-bar-btn--ghost:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-.save-bar-btn--primary {
-  background: var(--accent);
-  border: 1px solid transparent;
-  color: #fff;
-}
-
-.save-bar-btn--primary:hover:not(:disabled) {
-  background: #2980b9;
+  min-width: 0;
 }

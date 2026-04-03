@@ -63,3 +63,32 @@
   cursor: pointer;
   flex-shrink: 0;
 }
+
+.edit-row--radio {
+  grid-column: 1 / -1;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edit-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.edit-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.edit-radio-item input[type="radio"] {
+  accent-color: var(--accent);
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}

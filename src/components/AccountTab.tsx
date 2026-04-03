@@ -12,12 +12,16 @@ export function AccountTab({ account, isEditing, onChange }: AccountTabProps) {
   const ch = <K extends keyof AccountDetails>(key: K) => (val: AccountDetails[K]) =>
     onChange?.({ [key]: val } as Partial<AccountDetails>)
 
+  const handleGomPartner = (v: boolean) =>
+    onChange?.({ isGomPartner: v, ...(v ? { accountNumber: '2104995' } : {}) })
+
   if (isEditing && onChange) {
     return (
       <div className="tab-panel">
         <EditSection
           title="Company"
           fields={[
+            { label: 'GOM Partner',    value: account.isGomPartner,  onChange: handleGomPartner,   type: 'checkbox' },
             { label: 'Company Name',   value: account.companyName,   onChange: ch('companyName') },
             { label: 'Company Name 2', value: account.companyNameTwo, onChange: ch('companyNameTwo') },
             { label: 'Company Type',   value: account.companyType,   onChange: ch('companyType') },
@@ -85,6 +89,7 @@ export function AccountTab({ account, isEditing, onChange }: AccountTabProps) {
           { label: 'Department', value: account.department },
           { label: 'Department 2', value: account.departmentTwo },
           { label: 'Reference', value: account.reference },
+          { label: 'GOM Partner', value: account.isGomPartner || null },
           { label: 'Is Distributor', value: account.isDistributor || null },
           { label: 'New Customer', value: account.isNewCustomer || null },
         ]}

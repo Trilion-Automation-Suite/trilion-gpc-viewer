@@ -21,6 +21,7 @@ export interface AccountDetails {
   vatId: string
   customerIdAtGom: string
   reference: string
+  isGomPartner: boolean
   isDistributor: boolean
   isNewCustomer: boolean
 }
@@ -102,6 +103,7 @@ export interface OrderSummary {
   contractType: string
   orderStatus: string
   creationDate: string
+  comments: string
   // Totals
   msrp: number | null
   dp: number | null
@@ -154,4 +156,5 @@ export interface ParseResult {
   sourceFile: string
   rawOrderXml: string      // original order.xml text — used to patch + repack on save
   rawDecryptedBuffer: ArrayBuffer  // decrypted ZIP bytes — used to repack on save
+  fileHandle?: FileSystemFileHandle
 }

@@ -30,6 +30,19 @@ function setDocTag(doc: Document, tagName: string, value: string): void {
   }
 }
 
+/** Sets a direct child of the document root, creating it if absent. */
+function setRootChildTag(doc: Document, tagName: string, value: string): void {
+  for (const child of Array.from(doc.documentElement.children)) {
+    if (child.tagName === tagName) {
+      child.textContent = value
+      return
+    }
+  }
+  const created = doc.createElement(tagName)
+  created.textContent = value
+  doc.documentElement.appendChild(created)
+}
+
 /** Sets the text content of a direct child element with tagName inside parent. */
 function setChildTag(parent: Element, tagName: string, value: string): void {
   for (const child of Array.from(parent.children)) {
@@ -52,6 +65,7 @@ function patchHeaderFields(doc: Document, order: OrderSummary): void {
   setDocTag(doc, 'OrderNumber', order.orderNumber)
   setDocTag(doc, 'CaseId', order.caseId)
   setDocTag(doc, 'OpportunityID', order.opportunityId)  // note: ID not Id
+  setRootChildTag(doc, 'Comments', order.comments)
 }
 
 function patchAccountDetails(doc: Document, account: AccountDetails): void {
@@ -79,6 +93,7 @@ function patchAccountDetails(doc: Document, account: AccountDetails): void {
   setChildTag(el, 'VatId', account.vatId)
   setChildTag(el, 'CustomerIdAtGom', account.customerIdAtGom)
   setChildTag(el, 'Reference', account.reference)
+  setChildTag(el, 'IsGomPartner', String(account.isGomPartner))
   setChildTag(el, 'IsDistributor', String(account.isDistributor))
   setChildTag(el, 'IsNewCustomer', String(account.isNewCustomer))
 }

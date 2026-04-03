@@ -43,7 +43,6 @@
 }
 
 .theme-toggle {
-  margin-left: auto;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -61,6 +60,80 @@
 
 .theme-toggle:hover {
   background: rgba(255, 255, 255, 0.22);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.header-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.header-action-btn--ghost {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.header-action-btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.header-action-btn--primary {
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.header-action-btn--primary:hover:not(:disabled) {
+  background: #2980b9;
+}
+
+.header-action-btn--edit {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.header-action-btn--edit:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.header-action-btn--edit-active {
+  background: var(--accent);
+  border: 1px solid transparent;
+  color: #fff;
+}
+
+.header-action-btn--edit-active:hover {
+  background: #2980b9;
 }
 
 /* ── Idle state — full viewport drop zone ───────────────────────── */
@@ -104,16 +177,9 @@
   gap: 16px;
 }
 
-/* ── Tab row — pill selector + edit toggle ───────────────────────── */
-.tab-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: center;
-}
-
 /* ── Tab bar — pill selector style ──────────────────────────────── */
 .tab-bar {
+  align-self: center;
   display: flex;
   gap: 2px;
   background: var(--pill-bg);
@@ -149,45 +215,6 @@
 
 .tab-content {
   min-height: 200px;
-}
-
-/* ── Edit mode toggle button ─────────────────────────────────────── */
-.edit-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border-solid);
-  background: var(--bg-card-solid);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-
-.edit-toggle-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.edit-toggle-btn--active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
-}
-
-.edit-toggle-btn--active:hover {
-  background: #2980b9;
-  color: #fff;
-}
-
-/* ── Footer push when SaveBar is visible ────────────────────────── */
-.app-footer--push {
-  padding-bottom: 72px;
 }
 
 .tab-panel {

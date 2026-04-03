@@ -271,6 +271,7 @@ function parseAccountDetails(doc: Document): AccountDetails {
     vatId: t('VatId'),
     customerIdAtGom: t('CustomerIdAtGom'),
     reference: t('Reference'),
+    isGomPartner: b('IsGomPartner'),
     isDistributor: b('IsDistributor'),
     isNewCustomer: b('IsNewCustomer'),
   }
@@ -375,6 +376,16 @@ export function parseOrder(xml: string): OrderSummary {
     ...parseSimpleItems(doc, 'SupportArticlesData', 'SupportScreenData', 'support'),
   ])
 
+  // Comments: direct child of OrderData only (section-level Comments are excluded)
+  const root = doc.documentElement
+  let comments = ''
+  for (const child of Array.from(root.children)) {
+    if (child.tagName === 'Comments') {
+      comments = child.textContent?.trim() ?? ''
+      break
+    }
+  }
+
   return {
     orderNumber: docText(doc, 'OrderNumber'),
     caseId: docText(doc, 'CaseId'),
@@ -389,6 +400,7 @@ export function parseOrder(xml: string): OrderSummary {
     contractType: docText(doc, 'ContractType'),
     orderStatus: docText(doc, 'OrderStatus'),
     creationDate: docText(doc, 'CreationDate'),
+    comments,
     msrp: docFloat(doc, 'Msrp'),
     dp: docFloat(doc, 'Dp'),
     discountForCustomer: docFloat(doc, 'DiscountForCustomer'),
