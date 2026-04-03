@@ -31,10 +31,14 @@ export async function saveGpcFile(
   // 4. Write back — prefer in-place overwrite via File System Access API if a handle was supplied
   if (fileHandle) {
     try {
+      // queryPermission/requestPermission are WICG spec — not yet in TS DOM lib
+      type PermMode = { mode: 'readwrite' }
+      type WithPerm = { queryPermission(d: PermMode): Promise<string>; requestPermission(d: PermMode): Promise<string> }
+      const fh = fileHandle as FileSystemFileHandle & WithPerm
       // Ensure we have readwrite permission (shows a browser prompt if needed)
-      let perm = await fileHandle.queryPermission({ mode: 'readwrite' })
+      let perm = await fh.queryPermission({ mode: 'readwrite' })
       if (perm !== 'granted') {
-        perm = await fileHandle.requestPermission({ mode: 'readwrite' })
+        perm = await fh.requestPermission({ mode: 'readwrite' })
       }
       if (perm === 'granted') {
         const writable = await fileHandle.createWritable()
