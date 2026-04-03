@@ -6,6 +6,7 @@ import { loadGpcFile } from './lib/index.ts'
 import { FilePicker } from './components/FilePicker.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
 import { ErrorBanner } from './components/ErrorBanner.tsx'
+import { OrderStrip } from './components/OrderStrip.tsx'
 import { ItemsTab } from './components/ItemsTab.tsx'
 import { AccountTab } from './components/AccountTab.tsx'
 import { ContactTab } from './components/ContactTab.tsx'
@@ -131,6 +132,7 @@ export function App() {
         {state.status === 'loaded' && (
           <div className="app-loaded">
             <SummaryBar order={state.result.order} />
+            <OrderStrip order={state.result.order} />
             <nav className="tab-bar" aria-label="Sections">
               {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
                 <button

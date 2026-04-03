@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react'
 import type { OrderSummary } from '../types/order.ts'
-import { InfoGrid } from './InfoGrid.tsx'
 import { ConfigItemsTable } from './ConfigItemsTable.tsx'
 import './ItemsTab.css'
 
@@ -16,6 +15,7 @@ export function ItemsTab({ order }: ItemsTabProps) {
     .map((i) => i.no + '-' + i.name)
 
   const allExpanded = expandableKeys.length > 0 && expandableKeys.every((k) => expanded.has(k))
+  const anyExpanded = expanded.size > 0
 
   const toggleItem = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -25,44 +25,34 @@ export function ItemsTab({ order }: ItemsTabProps) {
     })
   }, [])
 
-  const expandAll = () => setExpanded(new Set(expandableKeys))
-  const collapseAll = () => setExpanded(new Set())
-
-  const creationDateShort = order.creationDate ? order.creationDate.split('T')[0] : ''
-
   return (
     <div className="items-tab">
-      <InfoGrid
-        fields={[
-          { label: 'Order #', value: order.orderNumber },
-          { label: 'Opportunity ID', value: order.opportunityId },
-          { label: 'Case ID', value: order.caseId },
-          { label: 'Order Date', value: order.orderDate },
-          { label: 'Created', value: creationDateShort },
-          { label: 'Type', value: order.contractType },
-          { label: 'Status', value: order.orderStatus },
-          { label: 'HOM Center', value: order.homCenter },
-          { label: 'Price List', value: order.priceList },
-          { label: 'Distributor', value: order.distributor },
-          { label: 'Destination', value: order.destination },
-          { label: 'Currency', value: order.currency },
-          { label: 'Created by', value: order.username },
-        ]}
-      />
       <div className="items-toolbar">
         <button
-          className="toolbar-btn"
-          onClick={expandAll}
+          className="toolbar-icon-btn"
+          onClick={() => setExpanded(new Set(expandableKeys))}
           disabled={allExpanded || expandableKeys.length === 0}
+          title="Expand all"
+          aria-label="Expand all"
         >
-          Expand all
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="7 14 12 9 17 14" />
+            <line x1="12" y1="20" x2="12" y2="9" />
+            <polyline points="7 4 12 9 17 4" transform="rotate(180 12 6.5)" />
+          </svg>
         </button>
         <button
-          className="toolbar-btn"
-          onClick={collapseAll}
-          disabled={expanded.size === 0}
+          className="toolbar-icon-btn"
+          onClick={() => setExpanded(new Set())}
+          disabled={!anyExpanded}
+          title="Collapse all"
+          aria-label="Collapse all"
         >
-          Collapse all
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="4" x2="12" y2="15" />
+            <polyline points="7 20 12 15 17 20" transform="rotate(180 12 17.5)" />
+          </svg>
         </button>
       </div>
       <ConfigItemsTable order={order} expanded={expanded} onToggle={toggleItem} />

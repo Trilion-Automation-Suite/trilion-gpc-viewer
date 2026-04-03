@@ -70,9 +70,10 @@ function parseSections(itemEl: Element): SectionDetail[] {
         amount: parseInt(childText(a, 'Amount') || '0', 10),
         unit: childText(a, 'Unit'),
         priceOnRequest: childText(a, 'PriceOnRequest').toLowerCase() === 'true',
-        unitMsrp: null,
-        unitDp: null,
-        sapNr: '',
+        // Msrp/Dp are serialised directly on SectionArticleScreenData (inherited from OrderArticle)
+        unitMsrp: childFloat(a, 'Msrp'),
+        unitDp: childFloat(a, 'Dp'),
+        sapNr: '',  // Article is not serialised for section articles; enriched later from config.xml
       }))
       .filter((a) => a.amount > 0 && a.name !== '')
 
@@ -147,6 +148,48 @@ function collectDependentItems(doc: Document): ConfigItem[] {
   return items
 }
 
+// ---------------------------------------------------------------------------
+// Article-list parsers for FreeList and Free items
+// ---------------------------------------------------------------------------
+
+/** Parse a FreeListArticle or FreeArticle element into an ArticleRow. */
+function parseFlatArticle(a: Element, nameTag: 'Article' | null): ArticleRow {
+  const articleEl = nameTag === 'Article' ? directChild(a, 'Article') : null
+  const name = articleEl ? childText(articleEl, 'LongName') : childText(a, 'LongName')
+  const sapNr =
+    childText(a, 'SapNr') || (articleEl ? childText(articleEl, 'SapNr') : '')
+  const amount = parseInt(childText(a, 'Amount') || '0', 10)
+  return {
+    name,
+    amount,
+    unit: childText(a, 'Unit') || (articleEl ? childText(articleEl, 'Unit') : ''),
+    priceOnRequest: childText(a, 'PriceOnRequest').toLowerCase() === 'true',
+    unitMsrp: childFloat(a, 'Msrp'),
+    unitDp: childFloat(a, 'Dp'),
+    sapNr,
+  }
+}
+
+function parseFreeListSections(el: Element): SectionDetail[] {
+  const listEl = directChild(el, 'FreeListArticles')
+  if (!listEl) return []
+  const articles = directChildren(listEl, 'FreeListArticle')
+    .map((a) => parseFlatArticle(a, 'Article'))
+    .filter((a) => a.amount > 0 && a.name !== '')
+  if (articles.length === 0) return []
+  return [{ name: '', articles, comments: childText(el, 'Comments') }]
+}
+
+function parseFreeArticleSections(el: Element): SectionDetail[] {
+  const listEl = directChild(el, 'FreeArticles')
+  if (!listEl) return []
+  const articles = directChildren(listEl, 'FreeArticle')
+    .map((a) => parseFlatArticle(a, 'Article'))
+    .filter((a) => a.amount > 0 && a.name !== '')
+  if (articles.length === 0) return []
+  return [{ name: '', articles, comments: childText(el, 'Comments') }]
+}
+
 function parseSimpleItems(
   doc: Document,
   containerTag: string,
@@ -158,6 +201,10 @@ function parseSimpleItems(
   return directChildren(container, rowTag).flatMap((el): ConfigItem[] => {
     const no = childText(el, 'No')
     const ciEl = directChild(el, 'ConfigurationItem')
+    const sections =
+      itemType === 'freeList' ? parseFreeListSections(el) :
+      itemType === 'free'     ? parseFreeArticleSections(el) :
+      []
     const item: ConfigItem = {
       no,
       label: no ? `Configuration item ${no}` : '',
@@ -170,7 +217,7 @@ function parseSimpleItems(
       isHidden: childBool(el, 'IsHidden'),
       isSub: no.includes('.'),
       itemType,
-      sections: [],
+      sections,
     }
     return [item, ...collectSubItems(el)]
   })

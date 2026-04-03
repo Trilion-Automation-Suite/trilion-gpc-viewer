@@ -42,6 +42,7 @@ function SectionRows({ sections, discount }: { sections: SectionDetail[]; discou
                 <td className="detail-section-indent" />
                 <td />
                 <td colSpan={2} className="article-detail-name">
+                  {art.sapNr && <span className="article-sap">{art.sapNr}</span>}
                   {art.amount > 1 && (
                     <span className="article-qty">{art.amount}×</span>
                   )}

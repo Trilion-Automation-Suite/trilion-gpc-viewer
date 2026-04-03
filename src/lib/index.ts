@@ -11,9 +11,9 @@ function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof bu
       for (const article of section.articles) {
         const prices = priceMap.get(article.name)
         if (prices) {
-          article.unitMsrp = prices.msrp
-          article.unitDp = prices.dp
-          article.sapNr = prices.sapNr
+          if (article.unitMsrp === null) article.unitMsrp = prices.msrp
+          if (article.unitDp === null) article.unitDp = prices.dp
+          if (!article.sapNr) article.sapNr = prices.sapNr
           if (!article.unit && prices.unit) article.unit = prices.unit
         }
       }

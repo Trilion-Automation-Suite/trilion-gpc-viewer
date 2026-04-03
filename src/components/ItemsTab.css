@@ -1,33 +1,36 @@
 .items-tab {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .items-toolbar {
   display: flex;
-  gap: 8px;
-  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
 }
 
-.toolbar-btn {
+.toolbar-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  font-weight: 500;
-  padding: 5px 12px;
+  color: var(--text-muted);
   cursor: pointer;
   transition: background 0.12s, color 0.12s;
+  padding: 0;
 }
 
-.toolbar-btn:hover:not(:disabled) {
+.toolbar-icon-btn:hover:not(:disabled) {
   background: var(--bg-card-alt);
-  color: var(--text-primary);
+  color: var(--accent);
 }
 
-.toolbar-btn:disabled {
-  opacity: 0.35;
+.toolbar-icon-btn:disabled {
+  opacity: 0.3;
   cursor: default;
 }

@@ -231,6 +231,15 @@
   color: var(--text-primary);
 }
 
+.article-sap {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  margin-right: 8px;
+  letter-spacing: 0.02em;
+}
+
 .article-qty {
   display: inline-block;
   min-width: 24px;
