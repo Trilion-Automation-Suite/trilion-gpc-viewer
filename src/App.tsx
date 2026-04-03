@@ -55,6 +55,16 @@ export function App() {
     setState({ status: 'idle' })
   }, [])
 
+  // Clipboard paste — fires when the user copies a file in Explorer/Outlook and presses Ctrl+V
+  useEffect(() => {
+    function handlePaste(e: ClipboardEvent) {
+      const file = e.clipboardData?.files[0]
+      if (file) handleFile(file)
+    }
+    window.addEventListener('paste', handlePaste)
+    return () => window.removeEventListener('paste', handlePaste)
+  }, [handleFile])
+
   // File Handling API — fires when the PWA is launched by opening a file
   // (e.g. double-clicking a .gconfiguration attachment in Outlook or Finder).
   // Works in installed PWAs on Chrome/Edge. Silently no-ops elsewhere.

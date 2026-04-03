@@ -75,8 +75,8 @@ export function FilePicker({ onFile }: FilePickerProps) {
         </svg>
 
         <p className="file-picker-primary">Drop a .gconfiguration file here</p>
-        <p className="file-picker-secondary">or tap to browse</p>
-        <p className="file-picker-hint">Accepts .gconfiguration files</p>
+        <p className="file-picker-secondary">or click to browse &nbsp;·&nbsp; or paste with Ctrl+V</p>
+        <p className="file-picker-hint">Accepts .gconfiguration and .gproducts files</p>
       </div>
 
       <input
