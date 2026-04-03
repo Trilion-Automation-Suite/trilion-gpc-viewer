@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      vite-ecosystem:
+        patterns: ["vite*", "@vitejs/*"]
+      typescript-ecosystem:
+        patterns: ["typescript*", "@typescript-eslint/*", "typescript-eslint"]
+      testing:
+        patterns: ["vitest*", "@vitest/*", "jsdom"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday

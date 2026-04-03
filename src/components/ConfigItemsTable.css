@@ -1,0 +1,265 @@
+.config-table-wrapper {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.config-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+  font-size: 0.865rem;
+}
+
+/* Sticky header */
+.config-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--header-bg);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 10px 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.config-table thead th:first-child {
+  border-radius: 0;
+}
+
+/* Right-align price columns */
+.config-table th.right,
+.config-table td.right {
+  text-align: right;
+}
+
+/* Row styles */
+.config-table tbody tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.config-table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.config-table tbody tr:hover {
+  background: var(--bg-card-alt);
+}
+
+/* Main item row */
+.config-table tbody tr.row-main td {
+  padding: 11px 12px;
+  background: var(--bg-card);
+}
+
+.config-table tbody tr.row-main:hover td {
+  background: var(--bg-card-alt);
+}
+
+.config-table tbody tr.row-main .item-name {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Sub-item row */
+.config-table tbody tr.row-sub td {
+  padding: 8px 12px;
+  background: var(--bg-card-alt);
+  font-size: 0.82rem;
+}
+
+.config-table tbody tr.row-sub:hover td {
+  background: var(--bg-card-hover);
+}
+
+.config-table tbody tr.row-sub .item-name {
+  padding-left: 18px;
+  color: var(--text-secondary);
+}
+
+/* Hidden item row */
+.config-table tbody tr.row-hidden {
+  opacity: 0.4;
+}
+
+.config-table tbody tr.row-hidden .item-name {
+  font-style: italic;
+}
+
+.hidden-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Price cells */
+.price-cell {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.price-cell.empty {
+  color: var(--text-faint);
+}
+
+/* Totals row */
+.config-table tfoot tr td {
+  padding: 11px 12px;
+  border-top: 2px solid var(--header-bg);
+  background: var(--bg-card-alt);
+  font-weight: 700;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.config-table tfoot .totals-label {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Item number */
+.item-no {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* Category */
+.item-category {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* System type */
+.item-system-type {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  max-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Expandable rows */
+.row-expandable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.row-expandable:hover td {
+  background: var(--accent-hover) !important;
+}
+
+.expand-toggle {
+  display: inline-block;
+  width: 14px;
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-right: 2px;
+}
+
+/* Section header rows */
+.row-section-header td {
+  padding: 4px 12px 2px;
+  background: var(--bg-card-alt);
+  border-bottom: none;
+}
+
+.section-header-cell {
+  padding-top: 6px !important;
+}
+
+.section-label {
+  font-size: 0.70rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+/* Article detail rows */
+.row-article-detail td {
+  padding: 3px 12px 3px;
+  background: var(--bg-card-alt);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+  vertical-align: middle;
+}
+
+.row-article-detail:last-of-type td {
+  border-bottom: none;
+}
+
+/* Section comment rows */
+.row-section-comment td {
+  padding: 2px 12px 6px;
+  background: var(--bg-card-alt);
+  border-bottom: none;
+}
+
+/* Shared indent stripe */
+.detail-section-indent {
+  width: 4px !important;
+  padding: 0 !important;
+  background: var(--accent) !important;
+  opacity: 0.5;
+}
+
+.article-detail-name {
+  color: var(--text-primary);
+}
+
+.article-qty {
+  display: inline-block;
+  min-width: 24px;
+  font-weight: 600;
+  color: var(--accent);
+  font-size: 0.78rem;
+  margin-right: 4px;
+}
+
+.article-name {
+  color: var(--text-secondary);
+}
+
+.price-on-request {
+  display: inline-block;
+  font-size: 0.68rem;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.section-comment {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
+  padding-left: 4px;
+  border-left: 2px solid var(--border);
+}

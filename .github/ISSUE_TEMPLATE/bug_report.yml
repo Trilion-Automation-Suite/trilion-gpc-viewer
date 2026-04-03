@@ -1,0 +1,63 @@
+name: Bug report
+description: Something isn't working correctly
+labels: [bug]
+body:
+  - type: input
+    id: file-type
+    attributes:
+      label: File type
+      placeholder: .gconfiguration or .gproducts
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you expect vs what actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open file ...
+        2. Click ...
+        3. See error ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome
+        - Edge
+        - Safari
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - macOS
+        - iOS
+        - Android
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: install-type
+    attributes:
+      label: How are you running the app?
+      options:
+        - label: Installed PWA (desktop app)
+        - label: Browser tab
