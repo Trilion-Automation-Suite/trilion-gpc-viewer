@@ -14,13 +14,13 @@
     "postinstall": "node scripts/create-icons.mjs"
   },
   "dependencies": {
-    "react": "^18.3.1",
+    "react": "^19.2.4",
     "react-dom": "^18.3.1",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
-    "@types/react": "^18.3.1",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^2.0.5",
