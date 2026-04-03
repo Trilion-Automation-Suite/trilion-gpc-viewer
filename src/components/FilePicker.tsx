@@ -27,6 +27,10 @@ export function FilePicker({ onFile }: FilePickerProps) {
     e.preventDefault()
     setDragOver(false)
     const dtItem = e.dataTransfer.items[0]
+    // Grab the file synchronously BEFORE any async work — the DataTransfer
+    // object is cleared after the event handler returns (or after an await),
+    // so getAsFile() would return null if called after the async handle lookup.
+    const file = dtItem?.getAsFile() ?? e.dataTransfer.files[0]
     let handle: FileSystemFileHandle | undefined
     if (dtItem && 'getAsFileSystemHandle' in dtItem) {
       try {
@@ -36,7 +40,6 @@ export function FilePicker({ onFile }: FilePickerProps) {
         if (h?.kind === 'file') handle = h as FileSystemFileHandle
       } catch { /* API unsupported or permission denied */ }
     }
-    const file = dtItem?.getAsFile() ?? e.dataTransfer.files[0]
     if (file) onFile(file, handle)
   }
 
