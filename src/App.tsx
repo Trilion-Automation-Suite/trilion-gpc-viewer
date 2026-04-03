@@ -1,6 +1,6 @@
 declare const __APP_VERSION__: string
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
 import { loadGpcFile } from './lib/index.ts'
 import { saveGpcFile } from './lib/saveGpcFile.ts'
@@ -167,6 +167,81 @@ export function App() {
       })
   }, [handleFile])
 
+  // ---------------------------------------------------------------------------
+  // Cmd+K search palette
+  // ---------------------------------------------------------------------------
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchActiveIdx, setSearchActiveIdx] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  // Build search index from current order data
+  const searchItems = (() => {
+    if (!order) return []
+    const items: { type: string; text: string; sub?: string; action: () => void }[] = []
+    // Tabs
+    ;(Object.keys(TAB_LABELS) as Tab[]).forEach((t) => {
+      items.push({ type: 'tab', text: TAB_LABELS[t], action: () => { setTab(t); setSearchOpen(false) } })
+    })
+    // Order fields
+    if (order.orderNumber) items.push({ type: 'field', text: `Order: ${order.orderNumber}`, action: () => { setTab('items'); setSearchOpen(false) } })
+    if (order.caseId) items.push({ type: 'field', text: `Case: ${order.caseId}`, action: () => { setTab('items'); setSearchOpen(false) } })
+    if (order.opportunityId) items.push({ type: 'field', text: `Opportunity: ${order.opportunityId}`, action: () => { setTab('items'); setSearchOpen(false) } })
+    // Account
+    if (order.account?.companyName) items.push({ type: 'account', text: order.account.companyName, sub: 'Account name', action: () => { setTab('account'); setSearchOpen(false) } })
+    if (order.account?.city) items.push({ type: 'account', text: `${order.account.city}${order.account.stateProvince ? ', ' + order.account.stateProvince : ''}`, sub: 'Location', action: () => { setTab('account'); setSearchOpen(false) } })
+    // Contact
+    if (order.contact?.firstName || order.contact?.lastName) items.push({ type: 'contact', text: `${order.contact.firstName} ${order.contact.lastName}`.trim(), sub: 'Technical contact', action: () => { setTab('contact'); setSearchOpen(false) } })
+    if (order.contact?.email) items.push({ type: 'contact', text: order.contact.email, sub: 'Contact email', action: () => { setTab('contact'); setSearchOpen(false) } })
+    // Line items
+    order.items?.forEach((item, i) => {
+      items.push({ type: 'item', text: item.name || item.label || `Item ${i + 1}`, sub: item.no, action: () => { setTab('items'); setSearchOpen(false) } })
+    })
+    return items
+  })()
+
+  const filteredSearchItems = searchQuery
+    ? searchItems.filter((item) => {
+        const q = searchQuery.toLowerCase()
+        return item.text.toLowerCase().includes(q) || (item.sub?.toLowerCase().includes(q) ?? false)
+      })
+    : searchItems
+
+  // Keyboard shortcut: Cmd+K / Ctrl+K
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setSearchOpen((v) => !v)
+        setSearchQuery('')
+        setSearchActiveIdx(0)
+      }
+      if (e.key === 'Escape' && searchOpen) {
+        setSearchOpen(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [searchOpen])
+
+  // Auto-focus search input when opened
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus()
+  }, [searchOpen])
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSearchActiveIdx((i) => Math.min(i + 1, filteredSearchItems.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSearchActiveIdx((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      filteredSearchItems[searchActiveIdx]?.action()
+    }
+  }
+
   const loadedFilename =
     state.status === 'loaded' ? state.result.sourceFile : undefined
 
@@ -179,13 +254,24 @@ export function App() {
           alt="Trilion"
           className="header-logo"
         />
-        <span className="header-app-name">GPC Viewer</span>
+        <h1 className="header-app-name">GPC Viewer</h1>
+        <span className="badge-beta">BETA</span>
         {loadedFilename && (
           <span className="filename" title={loadedFilename}>
             {loadedFilename}
           </span>
         )}
         <div className="header-right">
+          <button
+            className="header-icon-btn"
+            onClick={() => { setSearchOpen(true); setSearchQuery(''); setSearchActiveIdx(0) }}
+            title="Search (Cmd+K)"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="16.5" y1="16.5" x2="21" y2="21" />
+            </svg>
+          </button>
           {state.status === 'loaded' && order && isDirty && (
             <div className="header-actions">
               <button className="header-action-btn header-action-btn--ghost" onClick={handleDiscard} disabled={isSaving}>Discard</button>
@@ -342,6 +428,41 @@ export function App() {
       </footer>
 
       <InstallBanner />
+
+      {searchOpen && (
+        <div className="search-overlay" onClick={(e) => { if (e.target === e.currentTarget) setSearchOpen(false) }}>
+          <div className="search-palette">
+            <input
+              ref={searchInputRef}
+              className="search-input"
+              placeholder="Search sections, fields, items..."
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setSearchActiveIdx(0) }}
+              onKeyDown={handleSearchKeyDown}
+            />
+            <div className="search-results">
+              {filteredSearchItems.length === 0 && (
+                <div className="search-empty">No results found</div>
+              )}
+              {filteredSearchItems.map((item, i) => (
+                <div
+                  key={i}
+                  className={`search-result${i === searchActiveIdx ? ' active' : ''}`}
+                  onClick={() => item.action()}
+                  onMouseEnter={() => setSearchActiveIdx(i)}
+                >
+                  <span className="search-result-type">{item.type}</span>
+                  <div>
+                    <div className="search-result-text">{item.text}</div>
+                    {item.sub && <div className="search-result-sub">{item.sub}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="search-hint">Navigate with arrow keys, Enter to select, Esc to close</div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
