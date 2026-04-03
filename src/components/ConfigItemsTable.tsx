@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail } from '../types/order.ts'
-import { formatPrice, formatPercent, calcEndCustomerPrice } from '../lib/pricing.ts'
+import { formatPrice, formatPercent } from '../lib/pricing.ts'
 import './ConfigItemsTable.css'
 
 interface ConfigItemsTableProps {
@@ -9,34 +9,58 @@ interface ConfigItemsTableProps {
   onToggle: (key: string) => void
 }
 
+function calcMargin(msrp: number | null, dp: number | null): number | null {
+  if (msrp === null || msrp === 0 || dp === null) return null
+  return (msrp - dp) / msrp
+}
+
 function PriceCell({ value }: { value: number | null }) {
   if (value === null || value === 0) return <span className="price-cell empty">—</span>
   return <span className="price-cell">{formatPrice(value)}</span>
 }
 
-function DiscountCell({ value }: { value: number | null }) {
+function MarginCell({ value }: { value: number | null }) {
   if (value === null) return <span className="price-cell empty">—</span>
-  return <span className="price-cell">{formatPercent(value)}</span>
+  return <span className="price-cell margin-value">{formatPercent(value)}</span>
 }
 
-function SectionRows({ sections, discount }: { sections: SectionDetail[]; discount: number }) {
+function ExpandIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className="expand-chevron"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}
+    >
+      <polyline points="9 6 15 12 9 18" />
+    </svg>
+  )
+}
+
+function SectionRows({ sections }: { sections: SectionDetail[] }) {
   return (
     <>
       {sections.map((sec, si) => (
         <Fragment key={si}>
-          {/* Section header row */}
-          <tr className="row-section-header">
-            <td className="detail-section-indent" />
-            <td colSpan={7} className="section-header-cell">
-              <span className="section-label">{sec.name}</span>
-            </td>
-          </tr>
-          {/* One row per article */}
+          {sec.name && (
+            <tr className="row-section-header">
+              <td className="detail-section-indent" />
+              <td colSpan={6} className="section-header-cell">
+                <span className="section-label">{sec.name}</span>
+              </td>
+            </tr>
+          )}
           {sec.articles.map((art, ai) => {
             const lineListPrice = art.unitMsrp !== null ? art.unitMsrp * art.amount : null
-            const lineEndCustomer =
-              lineListPrice !== null ? calcEndCustomerPrice(lineListPrice, discount) : null
             const lineDistributor = art.unitDp !== null ? art.unitDp * art.amount : null
+            const lineMargin = calcMargin(lineListPrice, lineDistributor)
             return (
               <tr key={`sa-${si}-${ai}`} className="row-article-detail">
                 <td className="detail-section-indent" />
@@ -52,18 +76,15 @@ function SectionRows({ sections, discount }: { sections: SectionDetail[]; discou
                   )}
                 </td>
                 <td className="right"><PriceCell value={lineListPrice} /></td>
-                <td className="right"><PriceCell value={lineEndCustomer} /></td>
-                <td className="right">
-                  <span className="price-cell empty">—</span>
-                </td>
                 <td className="right"><PriceCell value={lineDistributor} /></td>
+                <td className="right"><MarginCell value={lineMargin} /></td>
               </tr>
             )
           })}
           {sec.comments && (
             <tr className="row-section-comment">
               <td className="detail-section-indent" />
-              <td colSpan={7}>
+              <td colSpan={6}>
                 <p className="section-comment">{sec.comments}</p>
               </td>
             </tr>
@@ -76,22 +97,14 @@ function SectionRows({ sections, discount }: { sections: SectionDetail[]; discou
 
 function ItemRow({
   item,
-  orderDiscount,
   expanded,
   onToggle,
 }: {
   item: ConfigItem
-  orderDiscount: number
   expanded: boolean
   onToggle: () => void
 }) {
-  const effectiveDiscount =
-    item.discountOverride !== null ? item.discountOverride : orderDiscount
-
-  const endCustomer =
-    item.totalMsrp !== null
-      ? calcEndCustomerPrice(item.totalMsrp, effectiveDiscount)
-      : null
+  const margin = calcMargin(item.totalMsrp, item.totalDp)
 
   const rowClass = [
     item.isSub ? 'row-sub' : 'row-main',
@@ -101,7 +114,6 @@ function ItemRow({
     .join(' ')
 
   const hasDetail = item.sections.length > 0
-  const displayDiscount = item.discountOverride !== null ? item.discountOverride : null
 
   return (
     <>
@@ -111,11 +123,7 @@ function ItemRow({
         aria-expanded={hasDetail ? expanded : undefined}
       >
         <td className="item-no">
-          {hasDetail && (
-            <span className="expand-toggle" aria-hidden="true">
-              {expanded ? '▾' : '▸'}
-            </span>
-          )}
+          {hasDetail && <ExpandIcon expanded={expanded} />}
           {item.no}
         </td>
         <td className="item-category" title={item.category}>
@@ -131,31 +139,24 @@ function ItemRow({
           {item.systemType || '—'}
         </td>
         <td className="right"><PriceCell value={item.totalMsrp} /></td>
-        <td className="right"><PriceCell value={endCustomer} /></td>
-        <td className="right"><DiscountCell value={displayDiscount} /></td>
         <td className="right"><PriceCell value={item.totalDp} /></td>
+        <td className="right"><MarginCell value={margin} /></td>
       </tr>
-      {expanded && hasDetail && <SectionRows sections={item.sections} discount={effectiveDiscount} />}
+      {expanded && hasDetail && <SectionRows sections={item.sections} />}
     </>
   )
 }
 
 export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTableProps) {
-  const orderDiscount = order.discountForCustomer ?? 0
-
   const topLevelVisible = order.items.filter((i) => !i.isSub && !i.isHidden)
   const totals = topLevelVisible.reduce(
-    (acc, item) => {
-      const msrp = item.totalMsrp ?? 0
-      const disc = item.discountOverride !== null ? item.discountOverride : orderDiscount
-      return {
-        msrp: acc.msrp + msrp,
-        endCustomer: acc.endCustomer + calcEndCustomerPrice(msrp, disc),
-        dp: acc.dp + (item.totalDp ?? 0),
-      }
-    },
-    { msrp: 0, endCustomer: 0, dp: 0 }
+    (acc, item) => ({
+      msrp: acc.msrp + (item.totalMsrp ?? 0),
+      dp: acc.dp + (item.totalDp ?? 0),
+    }),
+    { msrp: 0, dp: 0 }
   )
+  const totalMargin = calcMargin(totals.msrp, totals.dp)
 
   return (
     <div className="config-table-wrapper">
@@ -167,9 +168,8 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
             <th>Configuration Item</th>
             <th>System Type</th>
             <th className="right">List Price</th>
-            <th className="right">End Customer</th>
-            <th className="right">Discount</th>
             <th className="right">Distributor</th>
+            <th className="right">Margin</th>
           </tr>
         </thead>
         <tbody>
@@ -179,7 +179,6 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
               <ItemRow
                 key={key}
                 item={item}
-                orderDiscount={orderDiscount}
                 expanded={expanded.has(key)}
                 onToggle={() => onToggle(key)}
               />
@@ -188,11 +187,10 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
         </tbody>
         <tfoot>
           <tr>
-            <td colSpan={4} className="totals-label">Totals (top-level, visible)</td>
+            <td colSpan={4} className="totals-label">Total</td>
             <td className="right">{totals.msrp > 0 ? formatPrice(totals.msrp) : '—'}</td>
-            <td className="right">{totals.endCustomer > 0 ? formatPrice(totals.endCustomer) : '—'}</td>
-            <td className="right"><DiscountCell value={orderDiscount > 0 ? orderDiscount : null} /></td>
             <td className="right">{totals.dp > 0 ? formatPrice(totals.dp) : '—'}</td>
+            <td className="right"><MarginCell value={totalMargin} /></td>
           </tr>
         </tfoot>
       </table>

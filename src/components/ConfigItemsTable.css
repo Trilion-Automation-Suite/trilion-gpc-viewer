@@ -1,9 +1,12 @@
 .config-table-wrapper {
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+  box-shadow: var(--glass-shadow);
 }
 
 .config-table {
@@ -117,6 +120,11 @@
   color: var(--text-faint);
 }
 
+.margin-value {
+  color: var(--text-secondary);
+  font-size: 0.85em;
+}
+
 /* Totals row */
 .config-table tfoot tr td {
   padding: 11px 12px;
@@ -140,6 +148,7 @@
   color: var(--text-muted);
   font-size: 0.78rem;
   white-space: nowrap;
+  gap: 2px;
 }
 
 /* Category */
@@ -172,12 +181,19 @@
   background: var(--accent-hover) !important;
 }
 
-.expand-toggle {
+.expand-chevron {
   display: inline-block;
-  width: 14px;
-  font-size: 0.7rem;
+  width: 16px;
+  height: 16px;
   color: var(--accent);
-  margin-right: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.item-no {
+  display: flex;
+  align-items: center;
 }
 
 /* Section header rows */

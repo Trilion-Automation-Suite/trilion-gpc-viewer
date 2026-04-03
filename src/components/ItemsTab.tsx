@@ -35,10 +35,10 @@ export function ItemsTab({ order }: ItemsTabProps) {
           title="Expand all"
           aria-label="Expand all"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="7 14 12 9 17 14" />
-            <line x1="12" y1="20" x2="12" y2="9" />
-            <polyline points="7 4 12 9 17 4" transform="rotate(180 12 6.5)" />
+          {/* Two chevrons pointing outward = expand */}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="7 11 12 6 17 11" />
+            <polyline points="7 13 12 18 17 13" />
           </svg>
         </button>
         <button
@@ -48,10 +48,10 @@ export function ItemsTab({ order }: ItemsTabProps) {
           title="Collapse all"
           aria-label="Collapse all"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="4" x2="12" y2="15" />
-            <polyline points="7 20 12 15 17 20" transform="rotate(180 12 17.5)" />
+          {/* Two chevrons pointing inward = collapse */}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="7 6 12 11 17 6" />
+            <polyline points="7 18 12 13 17 18" />
           </svg>
         </button>
       </div>

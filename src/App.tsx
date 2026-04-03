@@ -11,6 +11,7 @@ import { ItemsTab } from './components/ItemsTab.tsx'
 import { AccountTab } from './components/AccountTab.tsx'
 import { ContactTab } from './components/ContactTab.tsx'
 import { AdminTab } from './components/AdminTab.tsx'
+import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
 
 type Tab = 'items' | 'account' | 'contact' | 'admin'
@@ -158,6 +159,7 @@ export function App() {
       <footer className="app-footer">
         v{__APP_VERSION__}
       </footer>
+      <InstallBanner />
     </>
   )
 }
