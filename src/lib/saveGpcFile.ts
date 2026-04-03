@@ -31,12 +31,19 @@ export async function saveGpcFile(
   // 4. Write back — prefer in-place overwrite via File System Access API if a handle was supplied
   if (fileHandle) {
     try {
-      const writable = await fileHandle.createWritable()
-      await writable.write(encryptedBuffer)
-      await writable.close()
-      return
+      // Ensure we have readwrite permission (shows a browser prompt if needed)
+      let perm = await fileHandle.queryPermission({ mode: 'readwrite' })
+      if (perm !== 'granted') {
+        perm = await fileHandle.requestPermission({ mode: 'readwrite' })
+      }
+      if (perm === 'granted') {
+        const writable = await fileHandle.createWritable()
+        await writable.write(encryptedBuffer)
+        await writable.close()
+        return
+      }
     } catch {
-      // Permission denied or API unsupported — fall through to download
+      // API unsupported or permission denied — fall through to download
     }
   }
 

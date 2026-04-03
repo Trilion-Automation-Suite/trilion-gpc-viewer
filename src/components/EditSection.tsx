@@ -22,7 +22,7 @@ export type EditField =
       label: string
       value: string
       onChange: (v: string) => void
-      type: 'radio'
+      type: 'select'
       options: readonly string[]
     }
 
@@ -49,23 +49,20 @@ export function EditSection({ title, fields }: EditSectionProps) {
                 aria-label={f.label}
               />
             </div>
-          ) : f.type === 'radio' ? (
-            <div key={f.label} className="edit-row edit-row--radio">
-              <span className="edit-label">{f.label}</span>
-              <div className="edit-radio-group">
+          ) : f.type === 'select' ? (
+            <div key={f.label} className="edit-row">
+              <label className="edit-label" htmlFor={`ef-${f.label}`}>{f.label}</label>
+              <select
+                id={`ef-${f.label}`}
+                className="edit-select"
+                value={f.value}
+                onChange={(e) => f.onChange(e.target.value)}
+              >
+                {f.value === '' && <option value="" disabled />}
                 {f.options.map((opt) => (
-                  <label key={opt} className="edit-radio-item">
-                    <input
-                      type="radio"
-                      name={`ef-${f.label}`}
-                      value={opt}
-                      checked={f.value === opt}
-                      onChange={() => f.onChange(opt)}
-                    />
-                    {opt}
-                  </label>
+                  <option key={opt} value={opt}>{opt}</option>
                 ))}
-              </div>
+              </select>
             </div>
           ) : (
             <div key={f.label} className="edit-row">
