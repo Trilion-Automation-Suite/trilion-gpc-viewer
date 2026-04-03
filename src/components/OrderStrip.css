@@ -33,3 +33,30 @@
   color: var(--text-primary);
   white-space: nowrap;
 }
+
+/* Edit-mode overrides */
+.order-strip-card--editable {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle), var(--glass-shadow);
+  border-radius: 12px;
+}
+
+.order-strip-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-solid);
+  border-radius: 0;
+  padding: 1px 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: inherit;
+  width: 100%;
+  min-width: 80px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.order-strip-input:focus {
+  border-bottom-color: var(--accent);
+}

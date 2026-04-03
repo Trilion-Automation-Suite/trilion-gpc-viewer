@@ -1,8 +1,9 @@
 declare const __APP_VERSION__: string
 
 import { useState, useCallback, useEffect } from 'react'
-import type { ParseResult } from './types/order.ts'
+import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
 import { loadGpcFile } from './lib/index.ts'
+import { saveGpcFile } from './lib/saveGpcFile.ts'
 import { FilePicker } from './components/FilePicker.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
 import { ErrorBanner } from './components/ErrorBanner.tsx'
@@ -11,6 +12,7 @@ import { ItemsTab } from './components/ItemsTab.tsx'
 import { AccountTab } from './components/AccountTab.tsx'
 import { ContactTab } from './components/ContactTab.tsx'
 import { AdminTab } from './components/AdminTab.tsx'
+import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
 
@@ -33,9 +35,28 @@ export function App() {
   const [darkMode, setDarkMode] = useState(false)
   const [tab, setTab] = useState<Tab>('items')
 
+  // Mutable order copy — this is what the tab components read/write in edit mode
+  const [order, setOrder] = useState<OrderSummary | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
   }, [darkMode])
+
+  // Sync mutable order copy whenever a new file is loaded
+  useEffect(() => {
+    if (state.status === 'loaded') {
+      setOrder(state.result.order)
+      setIsEditing(false)
+      setIsDirty(false)
+    } else {
+      setOrder(null)
+      setIsEditing(false)
+      setIsDirty(false)
+    }
+  }, [state])
 
   const handleFile = useCallback(async (file: File) => {
     setState({ status: 'loading' })
@@ -65,6 +86,64 @@ export function App() {
     return () => window.removeEventListener('paste', handlePaste)
   }, [handleFile])
 
+  // ---------------------------------------------------------------------------
+  // Edit mode handlers
+  // ---------------------------------------------------------------------------
+
+  const handleEditToggle = useCallback(() => {
+    setIsEditing((v) => !v)
+  }, [])
+
+  const handleHeaderChange = useCallback(
+    (patch: Pick<OrderSummary, 'orderNumber' | 'caseId' | 'opportunityId'>) => {
+      setOrder((prev) => (prev ? { ...prev, ...patch } : null))
+      setIsDirty(true)
+    },
+    []
+  )
+
+  const handleAccountChange = useCallback((patch: Partial<AccountDetails>) => {
+    setOrder((prev) => (prev ? { ...prev, account: { ...prev.account, ...patch } } : null))
+    setIsDirty(true)
+  }, [])
+
+  const handleContactChange = useCallback((patch: Partial<TechnicalContact>) => {
+    setOrder((prev) => (prev ? { ...prev, contact: { ...prev.contact, ...patch } } : null))
+    setIsDirty(true)
+  }, [])
+
+  const handleAdminChange = useCallback((patch: Partial<OrderAdministration>) => {
+    setOrder((prev) =>
+      prev ? { ...prev, administration: { ...prev.administration, ...patch } } : null
+    )
+    setIsDirty(true)
+  }, [])
+
+  const handleDiscard = useCallback(() => {
+    if (state.status === 'loaded') {
+      setOrder(state.result.order)
+      setIsDirty(false)
+    }
+  }, [state])
+
+  const handleSave = useCallback(async () => {
+    if (state.status !== 'loaded' || !order) return
+    setIsSaving(true)
+    try {
+      await saveGpcFile(
+        state.result.rawDecryptedBuffer,
+        state.result.rawOrderXml,
+        order,
+        state.result.sourceFile
+      )
+      setIsDirty(false)
+    } catch (err) {
+      alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }, [state, order])
+
   // File Handling API — fires when the PWA is launched by opening a file
   // (e.g. double-clicking a .gconfiguration attachment in Outlook or Finder).
   // Works in installed PWAs on Chrome/Edge. Silently no-ops elsewhere.
@@ -84,6 +163,7 @@ export function App() {
 
   const loadedFilename =
     state.status === 'loaded' ? state.result.sourceFile : undefined
+
 
   return (
     <>
@@ -145,33 +225,80 @@ export function App() {
           </div>
         )}
 
-        {state.status === 'loaded' && (
+        {state.status === 'loaded' && order && (
           <div className="app-loaded">
-            <SummaryBar order={state.result.order} />
-            <OrderStrip order={state.result.order} />
-            <nav className="tab-bar" aria-label="Sections">
-              {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
-                <button
-                  key={t}
-                  className={`tab-btn${tab === t ? ' active' : ''}`}
-                  onClick={() => setTab(t)}
-                  aria-current={tab === t ? 'page' : undefined}
-                >
-                  {TAB_LABELS[t]}
-                </button>
-              ))}
-            </nav>
+            <SummaryBar order={order} />
+            <OrderStrip
+              order={order}
+              isEditing={isEditing}
+              onChange={handleHeaderChange}
+            />
+            <div className="tab-row">
+              <nav className="tab-bar" aria-label="Sections">
+                {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
+                  <button
+                    key={t}
+                    className={`tab-btn${tab === t ? ' active' : ''}`}
+                    onClick={() => setTab(t)}
+                    aria-current={tab === t ? 'page' : undefined}
+                  >
+                    {TAB_LABELS[t]}
+                  </button>
+                ))}
+              </nav>
+              <button
+                className={`edit-toggle-btn${isEditing ? ' edit-toggle-btn--active' : ''}`}
+                onClick={handleEditToggle}
+                title={isEditing ? 'Exit edit mode' : 'Edit order fields'}
+                aria-pressed={isEditing}
+              >
+                {isEditing ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Done
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                    </svg>
+                    Edit
+                  </>
+                )}
+              </button>
+            </div>
             <div className="tab-content">
-              {tab === 'items' && <ItemsTab order={state.result.order} />}
-              {tab === 'account' && <AccountTab account={state.result.order.account} />}
-              {tab === 'contact' && <ContactTab contact={state.result.order.contact} />}
-              {tab === 'admin' && <AdminTab admin={state.result.order.administration} />}
+              {tab === 'items' && <ItemsTab order={order} />}
+              {tab === 'account' && (
+                <AccountTab
+                  account={order.account}
+                  isEditing={isEditing}
+                  onChange={handleAccountChange}
+                />
+              )}
+              {tab === 'contact' && (
+                <ContactTab
+                  contact={order.contact}
+                  isEditing={isEditing}
+                  onChange={handleContactChange}
+                />
+              )}
+              {tab === 'admin' && (
+                <AdminTab
+                  admin={order.administration}
+                  isEditing={isEditing}
+                  onChange={handleAdminChange}
+                />
+              )}
             </div>
           </div>
         )}
       </main>
 
-      <footer className="app-footer">
+      <footer className={`app-footer${isDirty ? ' app-footer--push' : ''}`}>
         <span className="footer-version">v{__APP_VERSION__}</span>
         <div className="footer-legal-block">
           <span className="footer-legal-heading">INTERNAL USE ONLY — PROPRIETARY &amp; CONFIDENTIAL</span>
@@ -186,6 +313,16 @@ export function App() {
           </span>
         </div>
       </footer>
+
+      {isDirty && (
+        <SaveBar
+          sourceFile={state.status === 'loaded' ? state.result.sourceFile : ''}
+          isSaving={isSaving}
+          onSave={handleSave}
+          onDiscard={handleDiscard}
+        />
+      )}
+
       <InstallBanner />
     </>
   )

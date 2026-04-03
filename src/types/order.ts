@@ -152,4 +152,6 @@ export interface ParseResult {
   order: OrderSummary
   gpcVersion: string       // from version.xml
   sourceFile: string
+  rawOrderXml: string      // original order.xml text — used to patch + repack on save
+  rawDecryptedBuffer: ArrayBuffer  // decrypted ZIP bytes — used to repack on save
 }

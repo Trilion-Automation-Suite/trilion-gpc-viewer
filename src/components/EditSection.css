@@ -1,0 +1,65 @@
+/* EditSection — edit-mode counterpart to InfoGrid */
+
+.edit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 6px 24px;
+}
+
+.edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.edit-row--bool {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.edit-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.edit-row--bool .edit-label {
+  pointer-events: auto;
+}
+
+.edit-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border-solid);
+  border-radius: 0;
+  padding: 2px 0;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.edit-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.edit-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}

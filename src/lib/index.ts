@@ -74,6 +74,8 @@ export async function loadGpcFile(file: File): Promise<ParseResult> {
     order,
     gpcVersion,
     sourceFile: file.name,
+    rawOrderXml: orderXml,
+    rawDecryptedBuffer: decrypted,
   }
 }
 
