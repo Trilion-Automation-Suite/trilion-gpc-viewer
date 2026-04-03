@@ -13,6 +13,7 @@
 .toolbar-pill-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   padding: 5px 13px;
   background: var(--bg-card);
@@ -37,4 +38,9 @@
 .toolbar-pill-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+.toolbar-pill-btn.icon-only {
+  padding: 5px 10px;
+  gap: 0;
 }

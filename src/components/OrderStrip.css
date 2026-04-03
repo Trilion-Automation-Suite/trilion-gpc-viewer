@@ -9,14 +9,14 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  padding: 8px 14px;
+  padding: 8px 20px;
   background: var(--bg-card);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: 999px;
   box-shadow: var(--glass-shadow);
-  min-width: 90px;
+  min-width: 110px;
 }
 
 .order-strip-label {

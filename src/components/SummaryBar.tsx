@@ -1,5 +1,5 @@
 import type { OrderSummary } from '../types/order.ts'
-import { formatPrice, formatPercent, calcEndCustomerPrice } from '../lib/pricing.ts'
+import { formatPrice, formatPercent, calcEndCustomerPrice, priceDecimals } from '../lib/pricing.ts'
 import './SummaryBar.css'
 
 interface SummaryBarProps {
@@ -19,6 +19,7 @@ export function SummaryBar({ order }: SummaryBarProps) {
   const discount = order.discountForCustomer ?? 0
   const endCustomerPrice = calcEndCustomerPrice(listPrice, discount)
   const margin = listPrice > 0 ? (listPrice - distributorPrice) / listPrice : null
+  const dec = priceDecimals([listPrice, distributorPrice, endCustomerPrice])
 
   const currency = order.currency || ''
 
@@ -27,7 +28,7 @@ export function SummaryBar({ order }: SummaryBarProps) {
       <div className="summary-card">
         <span className="summary-card-label">Distributor</span>
         <span className="summary-card-value">
-          {distributorPrice > 0 ? formatPrice(distributorPrice) : '—'}
+          {distributorPrice > 0 ? formatPrice(distributorPrice, dec) : '—'}
         </span>
         {currency && <span className="summary-card-currency">{currency}</span>}
       </div>
@@ -35,7 +36,7 @@ export function SummaryBar({ order }: SummaryBarProps) {
       <div className="summary-card">
         <span className="summary-card-label">List Price</span>
         <span className="summary-card-value">
-          {listPrice > 0 ? formatPrice(listPrice) : '—'}
+          {listPrice > 0 ? formatPrice(listPrice, dec) : '—'}
         </span>
         {currency && <span className="summary-card-currency">{currency}</span>}
       </div>
@@ -57,7 +58,7 @@ export function SummaryBar({ order }: SummaryBarProps) {
       <div className="summary-card">
         <span className="summary-card-label">End Customer</span>
         <span className="summary-card-value">
-          {listPrice > 0 ? formatPrice(endCustomerPrice) : '—'}
+          {listPrice > 0 ? formatPrice(endCustomerPrice, dec) : '—'}
         </span>
         {currency && <span className="summary-card-currency">{currency}</span>}
       </div>

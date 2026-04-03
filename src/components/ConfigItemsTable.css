@@ -247,13 +247,19 @@
   color: var(--text-primary);
 }
 
+.article-sap-cell {
+  color: var(--text-faint);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .article-sap {
-  display: inline-block;
   font-family: monospace;
   font-size: 0.72rem;
   color: var(--text-faint);
-  margin-right: 8px;
   letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .article-qty {

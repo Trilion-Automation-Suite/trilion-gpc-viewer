@@ -33,6 +33,14 @@ export function formatPercent(ratio: number | null): string {
 }
 
 /**
+ * Returns 0 if every non-null value in the array is a whole number, 2 otherwise.
+ * Used to strip ".00" from price columns when all amounts are integers.
+ */
+export function priceDecimals(values: (number | null)[]): number {
+  return values.every((v) => v === null || Number.isInteger(v)) ? 0 : 2
+}
+
+/**
  * Parses a dotted item number into an array of integers for sorting.
  * e.g. "1.2.3" → [1, 2, 3], "10" → [10]
  */

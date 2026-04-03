@@ -16,10 +16,10 @@ import './App.css'
 
 type Tab = 'items' | 'account' | 'contact' | 'admin'
 const TAB_LABELS: Record<Tab, string> = {
-  items: 'Configuration Items',
-  account: 'Account',
+  items: 'Items',
+  account: 'Account Details',
   contact: 'Technical Contact',
-  admin: 'Administration',
+  admin: 'Administration Information',
 }
 
 type AppState =
@@ -163,12 +163,18 @@ export function App() {
 
       <footer className="app-footer">
         <span className="footer-version">v{__APP_VERSION__}</span>
-        <span className="footer-legal">
-          For authorized use only. Information contained herein is proprietary and confidential.
-          Redistribution or sharing of any data viewed through this tool is strictly prohibited
-          without a direct NDA with ZEISS and/or Trilion Quality Systems.
-          Use at your own risk — no warranties expressed or implied.
-        </span>
+        <div className="footer-legal-block">
+          <span className="footer-legal-heading">INTERNAL USE ONLY — PROPRIETARY &amp; CONFIDENTIAL</span>
+          <span className="footer-legal">
+            This tool and all information displayed herein are strictly for internal use by authorized
+            personnel of Trilion Quality Systems only. All data, pricing, configurations, and customer
+            information are proprietary and confidential. Sharing, forwarding, reproducing, or
+            disclosing any information provided through this tool to any third party is completely
+            forbidden without a signed NDA with ZEISS and/or Trilion Quality Systems.
+            Unauthorized use or distribution may result in legal action.
+            Use at your own risk — no warranties expressed or implied.
+          </span>
+        </div>
       </footer>
       <InstallBanner />
     </>

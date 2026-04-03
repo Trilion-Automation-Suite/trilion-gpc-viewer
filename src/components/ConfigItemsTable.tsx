@@ -1,6 +1,6 @@
 import { Fragment } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail } from '../types/order.ts'
-import { formatPrice, formatPercent } from '../lib/pricing.ts'
+import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import './ConfigItemsTable.css'
 
 interface ConfigItemsTableProps {
@@ -14,9 +14,9 @@ function calcMargin(msrp: number | null, dp: number | null): number | null {
   return (msrp - dp) / msrp
 }
 
-function PriceCell({ value }: { value: number | null }) {
+function PriceCell({ value, dec }: { value: number | null; dec: number }) {
   if (value === null || value === 0) return <span className="price-cell empty">—</span>
-  return <span className="price-cell">{formatPrice(value)}</span>
+  return <span className="price-cell">{formatPrice(value, dec)}</span>
 }
 
 function MarginCell({ value }: { value: number | null }) {
@@ -44,7 +44,7 @@ function ExpandIcon({ expanded }: { expanded: boolean }) {
   )
 }
 
-function SectionRows({ sections }: { sections: SectionDetail[] }) {
+function SectionRows({ sections, dec }: { sections: SectionDetail[]; dec: number }) {
   return (
     <>
       {sections.map((sec, si) => (
@@ -64,9 +64,10 @@ function SectionRows({ sections }: { sections: SectionDetail[] }) {
             return (
               <tr key={`sa-${si}-${ai}`} className="row-article-detail">
                 <td className="detail-section-indent" />
-                <td />
-                <td colSpan={2} className="article-detail-name">
+                <td className="article-sap-cell">
                   {art.sapNr && <span className="article-sap">{art.sapNr}</span>}
+                </td>
+                <td className="article-detail-name">
                   {art.amount > 1 && (
                     <span className="article-qty">{art.amount}×</span>
                   )}
@@ -75,8 +76,9 @@ function SectionRows({ sections }: { sections: SectionDetail[] }) {
                     <span className="price-on-request">on request</span>
                   )}
                 </td>
-                <td className="right"><PriceCell value={lineListPrice} /></td>
-                <td className="right"><PriceCell value={lineDistributor} /></td>
+                <td />
+                <td className="right"><PriceCell value={lineListPrice} dec={dec} /></td>
+                <td className="right"><PriceCell value={lineDistributor} dec={dec} /></td>
                 <td className="right"><MarginCell value={lineMargin} /></td>
               </tr>
             )
@@ -99,10 +101,12 @@ function ItemRow({
   item,
   expanded,
   onToggle,
+  dec,
 }: {
   item: ConfigItem
   expanded: boolean
   onToggle: () => void
+  dec: number
 }) {
   const margin = calcMargin(item.totalMsrp, item.totalDp)
 
@@ -138,11 +142,11 @@ function ItemRow({
         <td className="item-system-type" title={item.systemType}>
           {item.systemType || '—'}
         </td>
-        <td className="right"><PriceCell value={item.totalMsrp} /></td>
-        <td className="right"><PriceCell value={item.totalDp} /></td>
+        <td className="right"><PriceCell value={item.totalMsrp} dec={dec} /></td>
+        <td className="right"><PriceCell value={item.totalDp} dec={dec} /></td>
         <td className="right"><MarginCell value={margin} /></td>
       </tr>
-      {expanded && hasDetail && <SectionRows sections={item.sections} />}
+      {expanded && hasDetail && <SectionRows sections={item.sections} dec={dec} />}
     </>
   )
 }
@@ -157,6 +161,18 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
     { msrp: 0, dp: 0 }
   )
   const totalMargin = calcMargin(totals.msrp, totals.dp)
+
+  const allPrices = order.items.flatMap((i) => [
+    i.totalMsrp,
+    i.totalDp,
+    ...i.sections.flatMap((s) =>
+      s.articles.flatMap((a) => [
+        a.unitMsrp !== null ? a.unitMsrp * a.amount : null,
+        a.unitDp !== null ? a.unitDp * a.amount : null,
+      ])
+    ),
+  ])
+  const dec = priceDecimals(allPrices)
 
   return (
     <div className="config-table-wrapper">
@@ -181,6 +197,7 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
                 item={item}
                 expanded={expanded.has(key)}
                 onToggle={() => onToggle(key)}
+                dec={dec}
               />
             )
           })}
@@ -188,8 +205,8 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
         <tfoot>
           <tr>
             <td colSpan={4} className="totals-label">Total</td>
-            <td className="right">{totals.msrp > 0 ? formatPrice(totals.msrp) : '—'}</td>
-            <td className="right">{totals.dp > 0 ? formatPrice(totals.dp) : '—'}</td>
+            <td className="right">{totals.msrp > 0 ? formatPrice(totals.msrp, dec) : '—'}</td>
+            <td className="right">{totals.dp > 0 ? formatPrice(totals.dp, dec) : '—'}</td>
             <td className="right"><MarginCell value={totalMargin} /></td>
           </tr>
         </tfoot>

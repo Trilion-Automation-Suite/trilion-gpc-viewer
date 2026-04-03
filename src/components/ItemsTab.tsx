@@ -29,32 +29,28 @@ export function ItemsTab({ order }: ItemsTabProps) {
     <div className="items-tab">
       <div className="items-toolbar">
         <button
-          className="toolbar-pill-btn"
+          className="toolbar-pill-btn icon-only"
           onClick={() => setExpanded(new Set(expandableKeys))}
           disabled={allExpanded || expandableKeys.length === 0}
+          title="Expand all"
+          aria-label="Expand all"
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <line x1="21" y1="10" x2="7" y2="10" />
-            <line x1="21" y1="6" x2="3" y2="6" />
-            <line x1="21" y1="14" x2="3" y2="14" />
-            <line x1="21" y1="18" x2="7" y2="18" />
-            <polyline points="3 10 7 6 3 6" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+            <polyline points="6 15 12 21 18 15" />
           </svg>
-          Expand all
         </button>
         <button
-          className="toolbar-pill-btn"
+          className="toolbar-pill-btn icon-only"
           onClick={() => setExpanded(new Set())}
           disabled={!anyExpanded}
+          title="Collapse all"
+          aria-label="Collapse all"
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <line x1="21" y1="10" x2="7" y2="10" />
-            <line x1="21" y1="6" x2="3" y2="6" />
-            <line x1="21" y1="14" x2="3" y2="14" />
-            <line x1="21" y1="18" x2="7" y2="18" />
-            <polyline points="7 6 3 10 7 10" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <polyline points="6 15 12 9 18 15" />
+            <polyline points="6 9 12 3 18 9" />
           </svg>
-          Collapse all
         </button>
       </div>
       <ConfigItemsTable order={order} expanded={expanded} onToggle={toggleItem} />
