@@ -1,10 +1,12 @@
-import { useState, Fragment } from 'react'
+import { Fragment } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail } from '../types/order.ts'
 import { formatPrice, formatPercent, calcEndCustomerPrice } from '../lib/pricing.ts'
 import './ConfigItemsTable.css'
 
 interface ConfigItemsTableProps {
   order: OrderSummary
+  expanded: Set<string>
+  onToggle: (key: string) => void
 }
 
 function PriceCell({ value }: { value: number | null }) {
@@ -137,22 +139,8 @@ function ItemRow({
   )
 }
 
-export function ConfigItemsTable({ order }: ConfigItemsTableProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(() => {
-    const keys = new Set<string>()
-    for (const item of order.items) {
-      if (item.sections.length > 0) keys.add(item.no + '-' + item.name)
-    }
-    return keys
-  })
+export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTableProps) {
   const orderDiscount = order.discountForCustomer ?? 0
-
-  const toggle = (key: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      next.has(key) ? next.delete(key) : next.add(key)
-      return next
-    })
 
   const topLevelVisible = order.items.filter((i) => !i.isSub && !i.isHidden)
   const totals = topLevelVisible.reduce(
@@ -192,7 +180,7 @@ export function ConfigItemsTable({ order }: ConfigItemsTableProps) {
                 item={item}
                 orderDiscount={orderDiscount}
                 expanded={expanded.has(key)}
-                onToggle={() => toggle(key)}
+                onToggle={() => onToggle(key)}
               />
             )
           })}

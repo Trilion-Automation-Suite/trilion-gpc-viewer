@@ -4,11 +4,21 @@ import { useState, useCallback, useEffect } from 'react'
 import type { ParseResult } from './types/order.ts'
 import { loadGpcFile } from './lib/index.ts'
 import { FilePicker } from './components/FilePicker.tsx'
-import { MetaPanel } from './components/MetaPanel.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
-import { ConfigItemsTable } from './components/ConfigItemsTable.tsx'
 import { ErrorBanner } from './components/ErrorBanner.tsx'
+import { ItemsTab } from './components/ItemsTab.tsx'
+import { AccountTab } from './components/AccountTab.tsx'
+import { ContactTab } from './components/ContactTab.tsx'
+import { AdminTab } from './components/AdminTab.tsx'
 import './App.css'
+
+type Tab = 'items' | 'account' | 'contact' | 'admin'
+const TAB_LABELS: Record<Tab, string> = {
+  items: 'Configuration Items',
+  account: 'Account',
+  contact: 'Technical Contact',
+  admin: 'Administration',
+}
 
 type AppState =
   | { status: 'idle' }
@@ -19,6 +29,7 @@ type AppState =
 export function App() {
   const [state, setState] = useState<AppState>({ status: 'idle' })
   const [darkMode, setDarkMode] = useState(false)
+  const [tab, setTab] = useState<Tab>('items')
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
@@ -119,9 +130,25 @@ export function App() {
 
         {state.status === 'loaded' && (
           <div className="app-loaded">
-            <MetaPanel order={state.result.order} />
             <SummaryBar order={state.result.order} />
-            <ConfigItemsTable order={state.result.order} />
+            <nav className="tab-bar" aria-label="Sections">
+              {(Object.keys(TAB_LABELS) as Tab[]).map((t) => (
+                <button
+                  key={t}
+                  className={`tab-btn${tab === t ? ' active' : ''}`}
+                  onClick={() => setTab(t)}
+                  aria-current={tab === t ? 'page' : undefined}
+                >
+                  {TAB_LABELS[t]}
+                </button>
+              ))}
+            </nav>
+            <div className="tab-content">
+              {tab === 'items' && <ItemsTab order={state.result.order} />}
+              {tab === 'account' && <AccountTab account={state.result.order.account} />}
+              {tab === 'contact' && <ContactTab contact={state.result.order.contact} />}
+              {tab === 'admin' && <AdminTab admin={state.result.order.administration} />}
+            </div>
           </div>
         )}
       </main>

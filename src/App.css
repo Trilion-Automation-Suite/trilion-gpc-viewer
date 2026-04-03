@@ -96,6 +96,55 @@
   gap: 20px;
 }
 
+/* ── Tab bar ─────────────────────────────────────────────────────── */
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  border-bottom: 2px solid var(--border);
+  margin-bottom: 20px;
+  overflow-x: auto;
+}
+
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  padding: 9px 16px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-content {
+  min-height: 200px;
+}
+
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.items-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
 /* ── Error state ─────────────────────────────────────────────────── */
 .app-error {
   padding: 16px 0;

@@ -1,4 +1,4 @@
-import type { ArticleRow, ConfigItem, OrderSummary, SectionDetail } from '../types/order.js'
+import type { AccountDetails, ArticleRow, ConfigItem, OrderAdministration, OrderSummary, SectionDetail, TechnicalContact } from '../types/order.js'
 import { parseItemNo } from './pricing.js'
 
 // ---------------------------------------------------------------------------
@@ -194,6 +194,111 @@ function sortItems(items: ConfigItem[]): ConfigItem[] {
 }
 
 // ---------------------------------------------------------------------------
+// Section parsers: Account, Contact, Administration
+// ---------------------------------------------------------------------------
+
+function parseAccountDetails(doc: Document): AccountDetails {
+  const el = doc.getElementsByTagName('AccountDetailsData')[0]
+  const t = (tag: string) => (el ? childText(el, tag) : '')
+  const b = (tag: string) => (el ? childBool(el, tag) : false)
+  return {
+    companyName: t('CompanyName'),
+    companyNameTwo: t('CompanyNameTwo'),
+    companyType: t('CompanyType'),
+    department: t('Department'),
+    departmentTwo: t('DepartmentTwo'),
+    street: t('Street'),
+    streetTwo: t('StreetTwo'),
+    streetThree: t('StreetThree'),
+    hpcPoBox: t('HpcPoBox'),
+    city: t('City'),
+    stateProvince: t('StateProvince'),
+    zipPostalCode: t('ZipPostalCode'),
+    country: t('Country'),
+    phone: t('Phone'),
+    phonePrefix: t('PhonePrefix'),
+    phoneCountryCode: t('PhoneCountryCode'),
+    email: t('Email'),
+    website: t('Website'),
+    accountNumber: t('AccountNumber'),
+    vatId: t('VatId'),
+    customerIdAtGom: t('CustomerIdAtGom'),
+    reference: t('Reference'),
+    isDistributor: b('IsDistributor'),
+    isNewCustomer: b('IsNewCustomer'),
+  }
+}
+
+function parseTechnicalContact(doc: Document): TechnicalContact {
+  const el = doc.getElementsByTagName('LocalTechnicalContact')[0]
+  const t = (tag: string) => (el ? childText(el, tag) : '')
+  return {
+    firstName: t('FirstName'),
+    lastName: t('LastName'),
+    title: t('Title'),
+    academicDegree: t('AcademicDegree'),
+    gender: t('Gender'),
+    position: t('Position'),
+    department: t('Department'),
+    source: t('Source'),
+    email: t('Email'),
+    additionalEmail: t('AdditionalEmail'),
+    businessPhone: t('BusinessPhone'),
+    businessPhonePrefix: t('BusinessPhonePrefix'),
+    businessPhoneCountryCode: t('BusinessPhoneCountryCode'),
+    mobilePhone: t('MobilePhone'),
+    mobilePhonePrefix: t('MobilePhonePrefix'),
+    mobilePhoneCountryCode: t('MobilePhoneCountryCode'),
+    additionalPhone: t('AdditionalPhone'),
+    additionalPhonePrefix: t('AdditionalPhonePrefix'),
+    additionalPhoneCountryCode: t('AdditionalPhoneCountryCode'),
+  }
+}
+
+function parseOrderAdministration(doc: Document): OrderAdministration {
+  const el = doc.getElementsByTagName('OrderAdministration')[0]
+  const t = (tag: string) => (el ? childText(el, tag) : '')
+  const b = (tag: string) => (el ? childBool(el, tag) : false)
+  return {
+    invoiceAddressType: t('InvoiceAddressType'),
+    invoiceAccountNumber: t('InvoiceAccountNumber'),
+    invoiceCompanyName: t('InvoiceCompanyName'),
+    invoiceCompanyNameTwo: t('InvoiceCompanyNameTwo'),
+    invoiceDepartment: t('InvoiceDepartment'),
+    invoiceDepartmentTwo: t('InvoiceDepartmentTwo'),
+    invoiceStreet: t('InvoiceStreet'),
+    invoiceStreetTwo: t('InvoiceStreetTwo'),
+    invoiceStreetThree: t('InvoiceStreetThree'),
+    invoiceHpcPoBox: t('InvoiceHPCPOBox'),
+    invoiceCity: t('InvoiceCity'),
+    invoiceState: t('InvoiceState'),
+    invoiceZip: t('InvoiceZIP'),
+    invoiceCountry: t('InvoiceCountry'),
+    invoicePaymentTerm: t('InvoicePaymentTerm'),
+    invoiceNewCustomer: b('InvoiceNewCustomer'),
+    shippingAddressType: t('ShippingAddressType'),
+    shippingAccountNumber: t('ShippingAccountNumber'),
+    shippingCompanyName: t('ShippingCompanyName'),
+    shippingCompanyNameTwo: t('ShippingCompanyNameTwo'),
+    shippingDepartment: t('ShippingDepartment'),
+    shippingDepartmentTwo: t('ShippingDepartmentTwo'),
+    shippingContactPerson: t('ShippingContactPerson'),
+    shippingStreet: t('ShippingStreet'),
+    shippingStreetTwo: t('ShippingStreetTwo'),
+    shippingStreetThree: t('ShippingStreetThree'),
+    shippingHpcPoBox: t('ShippingHPCPOBox'),
+    shippingCity: t('ShippingCity'),
+    shippingState: t('ShippingState'),
+    shippingZip: t('ShippingZIP'),
+    shippingCountry: t('ShippingCountry'),
+    shippingFreightTerm: t('ShippingFreightTerm'),
+    shippingMethod: t('ShippingMethod'),
+    specialShippingInstructions: t('SpecialShippingInstructions'),
+    shippingNewCustomer: b('ShippingNewCustomer'),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -234,11 +339,17 @@ export function parseOrder(xml: string): OrderSummary {
     orderDate: docText(doc, 'OrderDate'),
     currency,
     destination,
+    contractType: docText(doc, 'ContractType'),
+    orderStatus: docText(doc, 'OrderStatus'),
+    creationDate: docText(doc, 'CreationDate'),
     msrp: docFloat(doc, 'Msrp'),
     dp: docFloat(doc, 'Dp'),
     discountForCustomer: docFloat(doc, 'DiscountForCustomer'),
     finalPriceForEndCustomer: docFloat(doc, 'FinalPriceForEndCustomer'),
     orderValueToGom: docFloat(doc, 'OrderValueToGom'),
+    account: parseAccountDetails(doc),
+    contact: parseTechnicalContact(doc),
+    administration: parseOrderAdministration(doc),
     items,
   }
 }
