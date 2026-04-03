@@ -7,7 +7,7 @@ import { decryptGpcFile } from '../decrypt.js'
 
 const KEY_BYTES = new TextEncoder().encode('1234512345678976')
 
-async function encryptWithSameKey(plaintext: ArrayBuffer): Promise<ArrayBuffer> {
+async function encryptWithSameKey(plaintext: BufferSource): Promise<ArrayBuffer> {
   const key = await crypto.subtle.importKey(
     'raw',
     KEY_BYTES,
@@ -45,7 +45,7 @@ describe('decryptGpcFile', () => {
     payload[2] = 0x03
     payload[3] = 0x04
 
-    const encrypted = await encryptWithSameKey(payload.buffer as ArrayBuffer)
+    const encrypted = await encryptWithSameKey(payload)
     const decrypted = await decryptGpcFile(encrypted)
 
     const result = new Uint8Array(decrypted)
@@ -70,14 +70,14 @@ describe('decryptGpcFile', () => {
     // Plaintext: 48 bytes → after AES-CBC encrypt → 64 bytes (one PKCS7 padding block)
     // After decrypt → 48 bytes
     const plaintext = new Uint8Array(48).fill(0x41) // 'A' * 48
-    const encrypted = await encryptWithSameKey(plaintext.buffer as ArrayBuffer)
+    const encrypted = await encryptWithSameKey(plaintext)
     const decrypted = await decryptGpcFile(encrypted)
     expect(decrypted.byteLength).toBe(48)
   })
 
   it('returns an ArrayBuffer', async () => {
     const plaintext = new Uint8Array(16).fill(0x42)
-    const encrypted = await encryptWithSameKey(plaintext.buffer as ArrayBuffer)
+    const encrypted = await encryptWithSameKey(plaintext)
     const decrypted = await decryptGpcFile(encrypted)
     // Use string-tag check instead of instanceof — Node's WebCrypto returns
     // an ArrayBuffer from its own realm which fails cross-realm instanceof.
