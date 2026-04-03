@@ -42,7 +42,7 @@ export default defineConfig({
         // without requiring a save-to-disk step first.
         file_handlers: [
           {
-            action: '/',
+            action: './',
             accept: {
               'application/octet-stream': ['.gconfiguration', '.gproducts']
             },
