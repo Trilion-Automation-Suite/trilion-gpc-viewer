@@ -138,7 +138,13 @@ function ItemRow({
 }
 
 export function ConfigItemsTable({ order }: ConfigItemsTableProps) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const keys = new Set<string>()
+    for (const item of order.items) {
+      if (item.sections.length > 0) keys.add(item.no + '-' + item.name)
+    }
+    return keys
+  })
   const orderDiscount = order.discountForCustomer ?? 0
 
   const toggle = (key: string) =>
