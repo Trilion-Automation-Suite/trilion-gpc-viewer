@@ -139,11 +139,19 @@ function collectSubItems(parentEl: Element): ConfigItem[] {
 
 function collectDependentItems(doc: Document): ConfigItem[] {
   const items: ConfigItem[] = []
-  const container = doc.getElementsByTagName('DependentListsData')[0]
-  if (!container) return items
-  for (const el of directChildren(container, 'DependentListScreenData')) {
-    items.push(parseDependentItem(el, 'dependent'))
-    items.push(...collectSubItems(el))
+  // Older GPC files embed a full PDB <Database> element whose own
+  // DependentListsData contains the catalog (DependentLists > DependentList).
+  // The *order* items live in a separate DependentListsData that holds
+  // DependentListScreenData children.  Walk all matches to find the right one.
+  const candidates = doc.getElementsByTagName('DependentListsData')
+  for (let i = 0; i < candidates.length; i++) {
+    const container = candidates[i]
+    const screenDataChildren = directChildren(container, 'DependentListScreenData')
+    if (screenDataChildren.length === 0) continue
+    for (const el of screenDataChildren) {
+      items.push(parseDependentItem(el, 'dependent'))
+      items.push(...collectSubItems(el))
+    }
   }
   return items
 }
@@ -196,9 +204,14 @@ function parseSimpleItems(
   rowTag: string,
   itemType: 'free' | 'freeList' | 'support'
 ): ConfigItem[] {
-  const container = doc.getElementsByTagName(containerTag)[0]
-  if (!container) return []
-  return directChildren(container, rowTag).flatMap((el): ConfigItem[] => {
+  // Like collectDependentItems, older files may have a Database-embedded copy
+  // of the container that lacks order screen data.  Walk all matches.
+  const candidates = doc.getElementsByTagName(containerTag)
+  const items: ConfigItem[] = []
+  for (let ci = 0; ci < candidates.length; ci++) {
+    const rows = directChildren(candidates[ci], rowTag)
+    if (rows.length === 0) continue
+    items.push(...rows.flatMap((el): ConfigItem[] => {
     const no = childText(el, 'No')
     const ciEl = directChild(el, 'ConfigurationItem')
     const sections =
@@ -220,7 +233,9 @@ function parseSimpleItems(
       sections,
     }
     return [item, ...collectSubItems(el)]
-  })
+  }))
+  }
+  return items
 }
 
 // ---------------------------------------------------------------------------
