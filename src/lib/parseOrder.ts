@@ -52,6 +52,19 @@ function docFloat(doc: Document, tagName: string): number | null {
   return isNaN(v) ? null : v
 }
 
+/** Read a direct child of the document root only — avoids matching tags buried
+ *  inside the embedded PDB <Database> catalog that older files carry. */
+function rootText(doc: Document, tagName: string): string {
+  return directChild(doc.documentElement, tagName)?.textContent?.trim() ?? ''
+}
+
+function rootFloat(doc: Document, tagName: string): number | null {
+  const text = rootText(doc, tagName)
+  if (text === '') return null
+  const v = parseFloat(text)
+  return isNaN(v) ? null : v
+}
+
 // ---------------------------------------------------------------------------
 // Section/article parsing
 // ---------------------------------------------------------------------------
@@ -401,26 +414,29 @@ export function parseOrder(xml: string): OrderSummary {
     }
   }
 
+  // Use rootText/rootFloat for order-level fields so we read from the
+  // OrderData root element, not from identically-named tags buried inside
+  // the embedded PDB <Database> that older .gconfiguration files carry.
   return {
-    orderNumber: docText(doc, 'OrderNumber'),
-    caseId: docText(doc, 'CaseId'),
-    opportunityId: docText(doc, 'OpportunityID'),
-    distributor: docText(doc, 'Distributor'),
-    homCenter: docText(doc, 'HOMCenter'),
-    priceList: docText(doc, 'PriceList'),
-    username: docText(doc, 'Username'),
-    orderDate: docText(doc, 'OrderDate'),
+    orderNumber: rootText(doc, 'OrderNumber') || docText(doc, 'OrderNumber'),
+    caseId: rootText(doc, 'CaseId') || docText(doc, 'CaseId'),
+    opportunityId: rootText(doc, 'OpportunityID') || docText(doc, 'OpportunityID'),
+    distributor: rootText(doc, 'Distributor'),
+    homCenter: rootText(doc, 'HOMCenter') || docText(doc, 'HOMCenter'),
+    priceList: rootText(doc, 'PriceList') || docText(doc, 'PriceList'),
+    username: rootText(doc, 'Username') || docText(doc, 'Username'),
+    orderDate: rootText(doc, 'OrderDate') || docText(doc, 'OrderDate'),
     currency,
     destination,
-    contractType: docText(doc, 'ContractType'),
-    orderStatus: docText(doc, 'OrderStatus'),
-    creationDate: docText(doc, 'CreationDate'),
+    contractType: rootText(doc, 'ContractType') || docText(doc, 'ContractType'),
+    orderStatus: rootText(doc, 'OrderStatus') || docText(doc, 'OrderStatus'),
+    creationDate: rootText(doc, 'CreationDate') || docText(doc, 'CreationDate'),
     comments,
-    msrp: docFloat(doc, 'Msrp'),
-    dp: docFloat(doc, 'Dp'),
-    discountForCustomer: docFloat(doc, 'DiscountForCustomer'),
-    finalPriceForEndCustomer: docFloat(doc, 'FinalPriceForEndCustomer'),
-    orderValueToGom: docFloat(doc, 'OrderValueToGom'),
+    msrp: rootFloat(doc, 'Msrp') ?? docFloat(doc, 'Msrp'),
+    dp: rootFloat(doc, 'Dp') ?? docFloat(doc, 'Dp'),
+    discountForCustomer: rootFloat(doc, 'DiscountForCustomer') ?? docFloat(doc, 'DiscountForCustomer'),
+    finalPriceForEndCustomer: rootFloat(doc, 'FinalPriceForEndCustomer') ?? docFloat(doc, 'FinalPriceForEndCustomer'),
+    orderValueToGom: rootFloat(doc, 'OrderValueToGom') ?? docFloat(doc, 'OrderValueToGom'),
     account: parseAccountDetails(doc),
     contact: parseTechnicalContact(doc),
     administration: parseOrderAdministration(doc),

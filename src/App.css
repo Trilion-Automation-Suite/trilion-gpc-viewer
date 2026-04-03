@@ -172,7 +172,8 @@
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  min-height: calc(100vh - 72px);
+  height: calc(100dvh - 52px - 160px);
+  min-height: 280px;
   margin: -24px -16px 0;
 }
 

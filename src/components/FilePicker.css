@@ -25,8 +25,8 @@
   text-align: center;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  min-height: calc(100vh - 72px);
 }
+
 
 .file-picker-zone:hover,
 .file-picker-zone:focus-visible {
