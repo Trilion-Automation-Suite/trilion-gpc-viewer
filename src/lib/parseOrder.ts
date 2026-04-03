@@ -155,10 +155,10 @@ function parseSimpleItems(
 ): ConfigItem[] {
   const container = doc.getElementsByTagName(containerTag)[0]
   if (!container) return []
-  return directChildren(container, rowTag).map((el): ConfigItem => {
+  return directChildren(container, rowTag).flatMap((el): ConfigItem[] => {
     const no = childText(el, 'No')
     const ciEl = directChild(el, 'ConfigurationItem')
-    return {
+    const item: ConfigItem = {
       no,
       label: no ? `Configuration item ${no}` : '',
       category: ciEl ? childText(ciEl, 'GroupLevel1') : '',
@@ -172,6 +172,7 @@ function parseSimpleItems(
       itemType,
       sections: [],
     }
+    return [item, ...collectSubItems(el)]
   })
 }
 

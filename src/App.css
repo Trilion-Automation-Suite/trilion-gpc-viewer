@@ -100,3 +100,12 @@
 .app-error {
   padding: 16px 0;
 }
+
+/* ── Footer ──────────────────────────────────────────────────────── */
+.app-footer {
+  text-align: center;
+  padding: 24px 16px 16px;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+}
