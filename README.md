@@ -8,12 +8,14 @@ Open a `.gconfiguration` file and instantly see the full order breakdown: line i
 
 ## Features
 
-- Drag-and-drop or browse for `.gconfiguration` files
+- Drag-and-drop, browse, or paste `.gconfiguration` files
 - Full order header — order number, distributor, price list, currency, destination
 - Expandable line items with per-article list price, end customer price, and distributor price
+- Cmd+K / Ctrl+K command palette for searching tabs, fields, contacts, and line items
 - Light / dark theme
 - Installable PWA — works offline after first load
-- File association — double-click `.gconfiguration` files in Explorer or Outlook to open directly
+- File association — double-click `.gconfiguration` files in Explorer, Finder, or Outlook to open directly
+- Supports older .gconfiguration files with embedded PDB catalogs
 
 ---
 
@@ -36,6 +38,26 @@ Once installed, the app launches offline and registers as the default opener for
 3. Click **Install**
 
 The app now appears in your Start Menu / Applications folder. Double-clicking any `.gconfiguration` file will open it directly.
+
+### macOS — Set as default opener in Finder
+
+After installing the PWA via Chrome:
+
+1. Right-click any `.gconfiguration` file in Finder
+2. Select **Get Info**
+3. Under "Open with", select **Trilion GPC Viewer** (or **Google Chrome Apps - GPC Viewer**)
+4. Click **Change All** to apply to all `.gconfiguration` files
+
+> **Note:** File association requires Chrome or Edge. Safari does not support the File Handling API.
+
+### Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| Cmd+K / Ctrl+K | Open search palette |
+| Cmd+V / Ctrl+V | Paste a `.gconfiguration` file from clipboard |
+| Arrow keys + Enter | Navigate search results |
+| Esc | Close search palette |
 
 ---
 
