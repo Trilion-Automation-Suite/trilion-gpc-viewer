@@ -15,6 +15,7 @@ export interface PdbContents {
   configXml: string
   versionXml: string
   currencyRates: Record<string, number>
+  rawBuffer: ArrayBuffer  // decrypted PDB ZIP — used as base for new .gconfiguration files
 }
 
 export async function loadPdbFile(file: File): Promise<PdbContents> {
@@ -48,13 +49,16 @@ export async function loadPdbFile(file: File): Promise<PdbContents> {
     configXml,
     versionXml: versionXml ?? '',
     currencyRates,
+    rawBuffer: zipBuffer,
   }
 
-  // Cache for future "New Order" use
+  // Cache for future "New Order" use — includes the raw decrypted ZIP buffer
+  // so createNewOrder can use it as the base (GPC-created ZIP structure).
   const cached: CachedPdb = {
     configXml: result.configXml,
     versionXml: result.versionXml,
     currencyRates,
+    rawBuffer: zipBuffer,
     cachedAt: Date.now(),
   }
   await savePdbCache(cached)

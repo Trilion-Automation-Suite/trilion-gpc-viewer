@@ -276,6 +276,26 @@ export function App() {
     }
   }, [state, order, fileHandle])
 
+  const handleSaveAs = useCallback(async () => {
+    if (state.status !== 'loaded' || !order) return
+    setIsSaving(true)
+    try {
+      await saveGpcFile(
+        state.result.rawDecryptedBuffer,
+        state.result.rawOrderXml,
+        order,
+        state.result.sourceFile,
+        undefined,  // no fileHandle → always triggers download / Save As picker
+        state.result.originalItemNos
+      )
+      setIsDirty(false)
+    } catch (err) {
+      alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setIsSaving(false)
+    }
+  }, [state, order])
+
   // File Handling API — fires when the PWA is launched by opening a file
   // (e.g. double-clicking a .gconfiguration attachment in Outlook or Finder).
   // Works in installed PWAs on Chrome/Edge. Silently no-ops elsewhere.
@@ -401,6 +421,7 @@ export function App() {
           {state.status === 'loaded' && order && isDirty && (
             <div className="header-actions">
               <button className="header-action-btn header-action-btn--ghost" onClick={handleDiscard} disabled={isSaving}>Discard</button>
+              <button className="header-action-btn header-action-btn--ghost" onClick={handleSaveAs} disabled={isSaving}>Save As</button>
               <button className="header-action-btn header-action-btn--primary" onClick={handleSave} disabled={isSaving}>
                 {isSaving ? 'Saving…' : 'Save'}
               </button>

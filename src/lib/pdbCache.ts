@@ -24,6 +24,7 @@ export interface CachedPdb {
   configXml: string
   versionXml: string
   currencyRates: Record<string, number>  // ISO → EUR-based exchange rate (EUR=1, USD=1.15, etc.)
+  rawBuffer: ArrayBuffer  // original decrypted PDB ZIP — used as base for new .gconfiguration files
   cachedAt: number  // Date.now()
 }
 

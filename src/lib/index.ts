@@ -93,9 +93,13 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
 /**
  * Creates a new blank order ParseResult from optional cached PDB contents.
  * Used when the user clicks "New Order" (with or without a cached PDB).
+ *
+ * Strategy: clone the PDB's original ZIP (created by GPC's .NET Package API)
+ * and inject order.xml + add the xml/gomorder relationship.  This guarantees
+ * the OPC structure is byte-compatible with what GPC expects.
  */
 export async function createNewOrder(
-  pdb: { configXml: string; versionXml: string } | null
+  pdb: { configXml: string; versionXml: string; rawBuffer?: ArrayBuffer } | null
 ): Promise<ParseResult> {
   const orderXml = createBlankOrderXml()
   const order = parseOrder(orderXml)
@@ -104,24 +108,64 @@ export async function createNewOrder(
   const licenseCatalog = buildLicenseCatalog(orderXml)
   const currencyRates = pdb ? parseCurrencyRates(pdb.configXml) : {}
 
-  // For a new order we need a minimal ZIP with order.xml + config.xml.
-  // We use JSZip to create the OPC structure.
   const JSZip = (await import('jszip')).default
-  const zip = new JSZip()
+  let zip: InstanceType<typeof JSZip>
+
+  if (pdb?.rawBuffer) {
+    // Clone the PDB's ZIP (created by GPC) — preserves exact OPC structure.
+    zip = await JSZip.loadAsync(pdb.rawBuffer)
+  } else {
+    // No raw buffer available — build from cached strings.
+    zip = new JSZip()
+    if (pdb?.configXml) zip.file('config.xml', pdb.configXml)
+    if (pdb?.versionXml) zip.file('version.xml', pdb.versionXml)
+  }
+
+  // Inject order.xml
   zip.file('order.xml', orderXml)
-  if (pdb?.configXml) zip.file('config.xml', pdb.configXml)
-  if (pdb?.versionXml) zip.file('version.xml', pdb.versionXml)
-  // OPC structure required by GPC — must have _rels/.rels with xml/gomorder relationship
-  // and correct content types (text/xml + rels type), otherwise GPC rejects the file.
-  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="text/xml" /><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" /></Types>')
-  const rels = [
-    '<Relationship Type="xml/gomorder" Target="/order.xml" Id="R1" />',
-    pdb?.configXml ? '<Relationship Type="xml/gomconfig" Target="/config.xml" Id="R2" />' : '',
-    pdb?.versionXml ? '<Relationship Type="xml/gomversion" Target="/version.xml" Id="R3" />' : '',
-  ].filter(Boolean).join('')
-  // createFolders:false prevents JSZip from adding a spurious _rels/ directory entry
-  // that .NET's OPC Package reader doesn't expect (real GPC files have no _rels/ entry).
-  zip.file('_rels/.rels', `<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`, { createFolders: false })
+
+  // Update _rels/.rels — read existing relationships and add xml/gomorder.
+  let existingRels = ''
+  try {
+    const relsFile = zip.file('_rels/.rels')
+    if (relsFile) {
+      existingRels = await relsFile.async('string')
+    }
+  } catch { /* no existing rels */ }
+
+  if (existingRels && existingRels.includes('xml/gomorder')) {
+    // Already has order relationship (shouldn't happen for PDB, but safe)
+  } else if (existingRels && existingRels.includes('</Relationships>')) {
+    // Inject the gomorder relationship before the closing tag
+    existingRels = existingRels.replace(
+      '</Relationships>',
+      '<Relationship Type="xml/gomorder" Target="/order.xml" Id="R_order" /></Relationships>'
+    )
+    zip.file('_rels/.rels', existingRels, { createFolders: false })
+  } else {
+    // No existing rels — create from scratch
+    const rels = [
+      '<Relationship Type="xml/gomorder" Target="/order.xml" Id="R1" />',
+      pdb?.configXml ? '<Relationship Type="xml/gomconfig" Target="/config.xml" Id="R2" />' : '',
+      pdb?.versionXml ? '<Relationship Type="xml/gomversion" Target="/version.xml" Id="R3" />' : '',
+    ].filter(Boolean).join('')
+    zip.file('_rels/.rels', `<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`, { createFolders: false })
+  }
+
+  // Ensure [Content_Types].xml has the rels content type (PDB might not have it)
+  let contentTypes = ''
+  try {
+    const ctFile = zip.file('[Content_Types].xml')
+    if (ctFile) contentTypes = await ctFile.async('string')
+  } catch { /* */ }
+  if (!contentTypes.includes('openxmlformats-package.relationships')) {
+    zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="text/xml" /><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" /></Types>')
+  }
+
+  // Remove spurious directory entries
+  const dirs = Object.keys(zip.files).filter(n => zip.files[n].dir)
+  for (const d of dirs) zip.remove(d)
+
   const zipBuffer = await zip.generateAsync({ type: 'arraybuffer' })
 
   return {

@@ -40,11 +40,8 @@ export async function repackOpc(
   // Remove spurious directory entries (e.g. _rels/) that JSZip may have
   // created — .NET's OPC Package reader doesn't expect them and they can
   // cause import failures in the GOM Product Configurator.
-  for (const name of Object.keys(zip.files)) {
-    if (zip.files[name].dir) {
-      zip.remove(name)
-    }
-  }
+  const dirs = Object.keys(zip.files).filter(n => zip.files[n].dir)
+  for (const d of dirs) zip.remove(d)
 
   return zip.generateAsync({ type: 'arraybuffer' })
 }
