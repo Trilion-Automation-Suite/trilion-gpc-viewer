@@ -231,7 +231,46 @@ function removeItemsFromXml(doc: Document, deletedNos: Set<string>): void {
   }
 }
 
-/** Append a new FreeArticlesScreenData element for a free-article item. */
+/**
+ * Build the full ConfigurationItem XML block matching .NET's XmlSerializer output.
+ * Element order must match the C# class property declaration order exactly.
+ */
+function buildConfigurationItemXml(name: string, category: string, itemType: string, sapNr: string): string {
+  return `<ConfigurationItem>` +
+    `<ApplicableFee>-2147483648</ApplicableFee>` +
+    `<IsHidden>false</IsHidden>` +
+    `<AsSubItemOnly>false</AsSubItemOnly>` +
+    `<Flatten>false</Flatten>` +
+    `<UserBlacklist />` +
+    `<RegionalRestrictionNotInTheseCountriesRegions />` +
+    `<GroupLevel1>${escapeXml(category)}</GroupLevel1>` +
+    `<GroupLevel2 />` +
+    `<GroupLevel3 />` +
+    `<Name>${escapeXml(name)}</Name>` +
+    `<Parameter />` +
+    `<WorksheetArticleFilter />` +
+    `<ItemType>${escapeXml(itemType)}</ItemType>` +
+    `<AdditionalMandatoryFields>false</AdditionalMandatoryFields>` +
+    `<IsOppIdMandatory>false</IsOppIdMandatory>` +
+    `<Question1 />` +
+    `<Question2 />` +
+    `<Question3 />` +
+    `<Question1Formats />` +
+    `<Question2Formats />` +
+    `<Question3Formats />` +
+    `<SapNr>${escapeXml(sapNr)}</SapNr>` +
+    `<SapItemCategory />` +
+    `<ProductionArticles />` +
+    `<Discounts />` +
+    `<Unclean>false</Unclean>` +
+    `</ConfigurationItem>`
+}
+
+const XSI = 'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"'
+const NIL = 'xsi:nil="true"'
+
+/** Append a new FreeArticlesScreenData element for a free-article item.
+ *  Element order matches the C# ConfigurationItemData base → FreeArticlesScreenData hierarchy. */
 function insertFreeArticleItems(doc: Document, newItems: ConfigItem[]): void {
   if (newItems.length === 0) return
   const container = findOrCreateRootChild(doc, 'FreeArticlesData')
@@ -240,17 +279,31 @@ function insertFreeArticleItems(doc: Document, newItems: ConfigItem[]): void {
     const artName = art?.name ?? item.name
     const artAmount = art?.amount ?? 1
     const artUnit = art?.unit ?? 'pcs'
+    const artSapNr = art?.sapNr ?? ''
 
-    const rowXml = `<FreeArticlesScreenData>` +
+    const rowXml = `<FreeArticlesScreenData ${XSI}>` +
+      buildConfigurationItemXml(item.name, item.category, 'FreeArticle', artSapNr) +
+      `<UseInCalculation>true</UseInCalculation>` +
       `<No>${item.no}</No>` +
-      `<ConfigurationItem><Name>${escapeXml(item.name)}</Name><GroupLevel1>${escapeXml(item.category)}</GroupLevel1></ConfigurationItem>` +
-      `<TotalMsrp></TotalMsrp><TotalDp></TotalDp><Discount></Discount>` +
+      `<TotalDp ${NIL} />` +
+      `<TotalMsrp ${NIL} />` +
+      `<Discount ${NIL} />` +
+      `<IsDiscountPercentage>false</IsDiscountPercentage>` +
       `<IsHidden>false</IsHidden>` +
       `<FreeArticles>` +
         `<FreeArticle>` +
-          `<Article><LongName>${escapeXml(artName)}</LongName><SapNr></SapNr><Unit>${escapeXml(artUnit)}</Unit></Article>` +
-          `<Amount>${artAmount}</Amount><Unit>${escapeXml(artUnit)}</Unit>` +
-          `<Msrp></Msrp><Dp></Dp><PriceOnRequest>false</PriceOnRequest>` +
+          `<Amount>${artAmount}</Amount>` +
+          `<Step>1</Step>` +
+          `<Article><LongName>${escapeXml(artName)}</LongName><SapNr>${escapeXml(artSapNr)}</SapNr><Unit>${escapeXml(artUnit)}</Unit></Article>` +
+          `<OverwrittenDp ${NIL} />` +
+          `<OverwrittenMrsp ${NIL} />` +
+          `<PriceOnRequest>false</PriceOnRequest>` +
+          `<EuroMsrp ${NIL} />` +
+          `<Msrp ${NIL} />` +
+          `<Dp ${NIL} />` +
+          `<SumMsrp ${NIL} />` +
+          `<SumDp ${NIL} />` +
+          `<CustomQuantityDiscount ${NIL} />` +
         `</FreeArticle>` +
       `</FreeArticles>` +
       `</FreeArticlesScreenData>`
@@ -260,40 +313,38 @@ function insertFreeArticleItems(doc: Document, newItems: ConfigItem[]): void {
   }
 }
 
-/** Append a new DependentListScreenData element for a software license item. */
+/** Append a new DependentListScreenData element for a software license item.
+ *  Element order matches the C# ConfigurationItemData base → DependentListScreenData hierarchy. */
 function insertLicenseItems(doc: Document, newItems: ConfigItem[], allItems: ConfigItem[] = []): void {
   if (newItems.length === 0) return
   const container = findOrCreateRootChild(doc, 'DependentListsData')
   for (const item of newItems) {
     const smaNo = `${item.no}.1`
-    // Look up the SMA sub-item in allItems to get user fields
     const smaItem = allItems.find(i => i.no === smaNo)
     const smaUserZeissId = smaItem?.userZeissId ?? ''
     const smaUserName = smaItem?.userName ?? ''
 
-    const rowXml = `<DependentListScreenData>` +
+    const rowXml = `<DependentListScreenData ${XSI}>` +
+      buildConfigurationItemXml(item.name, 'Software License', 'DependentList', '') +
+      `<UseInCalculation>true</UseInCalculation>` +
       `<No>${item.no}</No>` +
-      `<ConfigurationItem>` +
-        `<Name>${escapeXml(item.name)}</Name>` +
-        `<GroupLevel1>Software License</GroupLevel1>` +
-        `<GroupLevel2></GroupLevel2>` +
-        `<ItemType>DependentList</ItemType>` +
-        `<AdditionalMandatoryFields>true</AdditionalMandatoryFields>` +
-      `</ConfigurationItem>` +
-      `<TotalMsrp></TotalMsrp><TotalDp></TotalDp><Discount></Discount>` +
+      `<TotalDp ${NIL} />` +
+      `<TotalMsrp ${NIL} />` +
+      `<Discount ${NIL} />` +
+      `<IsDiscountPercentage>false</IsDiscountPercentage>` +
       `<IsHidden>false</IsHidden>` +
       `<Sections />` +
       `<SubConfigurations>` +
-        `<ConfigurationItemData>` +
+        `<ConfigurationItemData ${XSI}>` +
+          buildConfigurationItemXml('SMA', 'SMA', 'DependentList', '') +
+          `<UseInCalculation>true</UseInCalculation>` +
           `<No>${smaNo}</No>` +
           `<Reply1>${escapeXml(smaUserZeissId)}</Reply1>` +
           `<Reply2>${escapeXml(smaUserName)}</Reply2>` +
-          `<ConfigurationItem>` +
-            `<Name>SMA</Name>` +
-            `<GroupLevel1>SMA</GroupLevel1>` +
-            `<ItemType>DependentList</ItemType>` +
-          `</ConfigurationItem>` +
-          `<TotalMsrp></TotalMsrp><TotalDp></TotalDp><Discount></Discount>` +
+          `<TotalDp ${NIL} />` +
+          `<TotalMsrp ${NIL} />` +
+          `<Discount ${NIL} />` +
+          `<IsDiscountPercentage>false</IsDiscountPercentage>` +
           `<IsHidden>false</IsHidden>` +
           `<Sections />` +
           `<SubConfigurations />` +
