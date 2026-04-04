@@ -2,6 +2,10 @@
  * Creates a minimal blank order.xml string pre-filled with Trilion defaults.
  * Used when the user clicks "New Order".
  *
+ * ALL fields that patchOrderXml may write must exist here with empty/default
+ * values so that setDocTag / setChildTag updates them in-place instead of
+ * appending them at the wrong position (which causes GPC to reject the file).
+ *
  * Defaults:
  *   - Distributor: 2104995 (GOM Partner ID)
  *   - PriceList: Partner
@@ -22,14 +26,36 @@ export function createBlankOrderXml(): string {
   <FreeListArticlesData />
   <SupportArticlesData />
   <AccountDetailsData>
+    <CompanyName />
+    <CompanyNameTwo />
+    <CompanyType />
+    <Department />
+    <DepartmentTwo />
+    <Street />
+    <StreetTwo />
+    <StreetThree />
+    <HpcPoBox />
+    <City />
+    <StateProvince />
+    <ZipPostalCode />
     <Country>United States of America</Country>
+    <Phone />
+    <PhonePrefix />
+    <PhoneCountryCode />
+    <Email />
+    <Website />
+    <AccountNumber>2104995</AccountNumber>
+    <VatId />
+    <CustomerIdAtGom />
+    <Reference />
     <IsGomPartner>true</IsGomPartner>
     <IsDistributor>false</IsDistributor>
     <IsNewCustomer>false</IsNewCustomer>
-    <AccountNumber>2104995</AccountNumber>
   </AccountDetailsData>
   <AttachedFiles />
+  <CaseId />
   <CleanOrder>false</CleanOrder>
+  <Comments />
   <ContractType>Purchase</ContractType>
   <CreationDate>${now}</CreationDate>
   <Currency>
@@ -49,22 +75,71 @@ export function createBlankOrderXml(): string {
   <Distributor>2104995</Distributor>
   <FinalPriceForEndCustomer>0</FinalPriceForEndCustomer>
   <LocalTechnicalContact>
+    <FirstName />
+    <LastName />
+    <Title />
+    <AcademicDegree />
+    <Gender />
+    <Position />
+    <Department />
+    <Source />
+    <Email />
+    <AdditionalEmail />
+    <BusinessPhone />
+    <BusinessPhonePrefix />
+    <BusinessPhoneCountryCode />
+    <MobilePhone />
+    <MobilePhonePrefix />
+    <MobilePhoneCountryCode />
+    <AdditionalPhone />
+    <AdditionalPhonePrefix />
+    <AdditionalPhoneCountryCode />
     <IsOtherDepartment>false</IsOtherDepartment>
     <IsOtherPosition>false</IsOtherPosition>
     <IsOtherSource>false</IsOtherSource>
   </LocalTechnicalContact>
   <Msrp>0</Msrp>
   <Dp>0</Dp>
+  <OpportunityID />
   <OrderAdministration>
     <InvoiceAddressType>GOM Partner</InvoiceAddressType>
-    <InvoiceNewCustomer>false</InvoiceNewCustomer>
+    <InvoiceAccountNumber />
+    <InvoiceCompanyName />
+    <InvoiceCompanyNameTwo />
+    <InvoiceDepartment />
+    <InvoiceDepartmentTwo />
+    <InvoiceStreet />
+    <InvoiceStreetTwo />
+    <InvoiceStreetThree />
+    <InvoiceHPCPOBox />
+    <InvoiceCity />
+    <InvoiceState />
+    <InvoiceZIP />
+    <InvoiceCountry />
     <InvoicePaymentTerm>90 days without deduction</InvoicePaymentTerm>
+    <InvoiceNewCustomer>false</InvoiceNewCustomer>
     <IsTarifNumberToggler>false</IsTarifNumberToggler>
     <ShippingAddressType>GOM Partner</ShippingAddressType>
-    <ShippingNewCustomer>false</ShippingNewCustomer>
-    <ShippingMethod>Air</ShippingMethod>
+    <ShippingAccountNumber />
+    <ShippingCompanyName />
+    <ShippingCompanyNameTwo />
+    <ShippingDepartment />
+    <ShippingDepartmentTwo />
+    <ShippingContactPerson />
+    <ShippingStreet />
+    <ShippingStreetTwo />
+    <ShippingStreetThree />
+    <ShippingHPCPOBox />
+    <ShippingCity />
+    <ShippingState />
+    <ShippingZIP />
+    <ShippingCountry />
     <ShippingFreightTerm>FCA</ShippingFreightTerm>
+    <ShippingMethod>Air</ShippingMethod>
+    <SpecialShippingInstructions />
+    <ShippingNewCustomer>false</ShippingNewCustomer>
   </OrderAdministration>
+  <OrderNumber />
   <OrderStatus>Editing</OrderStatus>
   <OrderValueToGom>0</OrderValueToGom>
   <PriceList>Partner</PriceList>
