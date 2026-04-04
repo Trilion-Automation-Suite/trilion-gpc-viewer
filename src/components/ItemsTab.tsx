@@ -9,7 +9,7 @@ interface ItemsTabProps {
   order: OrderSummary
   isEditing: boolean
   onDelete: (no: string) => void
-  onAddProduct: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string }) => void
+  onAddProduct: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => void
   onAddLicense: (fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
   articleCatalog: ArticleCatalogEntry[]
@@ -24,7 +24,7 @@ function SearchProductModal({
   onCancel,
 }: {
   catalog: ArticleCatalogEntry[]
-  onAdd: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string }) => void
+  onAdd: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => void
   onCancel: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -45,7 +45,7 @@ function SearchProductModal({
     e.preventDefault()
     const item = selected ?? (filtered.length === 1 ? filtered[0] : null)
     if (!item) return
-    onAdd({ name: item.longName, amount, unit: item.unit || 'pcs', unitMsrp: item.unitMsrp, unitDp: item.unitDp, sapNr: item.sapNr, category: item.category })
+    onAdd({ name: item.longName, amount, unit: item.unit || 'pcs', unitMsrp: item.unitMsrp, unitDp: item.unitDp, sapNr: item.sapNr, category: item.category, currency: item.currency })
   }
 
   return (
@@ -201,7 +201,7 @@ export function ItemsTab({
     })
   }, [])
 
-  function handleAddProduct(fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string }) {
+  function handleAddProduct(fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) {
     onAddProduct(fields)
     setActiveModal(null)
   }

@@ -19,5 +19,5 @@ async function importAesKeyForEncrypt(keyBytes: Uint8Array<ArrayBuffer>): Promis
 
 export async function encryptGpcFile(buffer: ArrayBuffer): Promise<ArrayBuffer> {
   const key = await importAesKeyForEncrypt(KEY_BYTES)
-  return crypto.subtle.encrypt({ name: 'AES-CBC', iv: KEY_BYTES }, key, buffer)
+  return crypto.subtle.encrypt({ name: 'AES-CBC', iv: KEY_BYTES }, key, new Uint8Array(buffer))
 }

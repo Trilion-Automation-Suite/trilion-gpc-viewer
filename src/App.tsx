@@ -168,9 +168,19 @@ export function App() {
     setIsDirty(true)
   }, [])
 
-  const handleAddProduct = useCallback((fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string }) => {
+  const handleAddProduct = useCallback((fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => {
     setOrder(prev => {
       if (!prev) return null
+      // Convert prices from article currency to order currency if needed
+      const rates = state.status === 'loaded' ? state.result.currencyRates : {}
+      let { unitMsrp, unitDp } = fields
+      if (fields.currency && prev.currency && fields.currency !== prev.currency) {
+        const sourceRate = rates[fields.currency] ?? 1
+        const targetRate = rates[prev.currency] ?? 1
+        const factor = targetRate / sourceRate
+        if (unitMsrp !== null) unitMsrp = Math.round(unitMsrp * factor * 100) / 100
+        if (unitDp !== null) unitDp = Math.round(unitDp * factor * 100) / 100
+      }
       const no = nextItemNo(prev.items)
       const newItem: ConfigItem = {
         no,
@@ -185,12 +195,12 @@ export function App() {
         isSub: false,
         itemType: 'free',
         isNew: true,
-        sections: [{ name: '', articles: [{ name: fields.name, amount: fields.amount, unit: fields.unit || 'pcs', priceOnRequest: false, unitMsrp: fields.unitMsrp, unitDp: fields.unitDp, sapNr: fields.sapNr }], comments: '' }],
+        sections: [{ name: '', articles: [{ name: fields.name, amount: fields.amount, unit: fields.unit || 'pcs', priceOnRequest: false, unitMsrp, unitDp, sapNr: fields.sapNr }], comments: '' }],
       }
       return { ...prev, items: [...prev.items, newItem] }
     })
     setIsDirty(true)
-  }, [])
+  }, [state])
 
   const handleAddLicense = useCallback((fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => {
     setOrder(prev => {

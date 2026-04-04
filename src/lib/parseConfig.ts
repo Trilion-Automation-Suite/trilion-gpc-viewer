@@ -12,6 +12,7 @@ export interface ArticlePrices {
   sapNr: string
   unit: string
   category: string
+  currency: string  // ISO currency of the price list (e.g. "EUR")
 }
 
 export interface ArticleCatalogEntry {
@@ -21,6 +22,7 @@ export interface ArticleCatalogEntry {
   unitDp: number | null
   unit: string
   category: string
+  currency: string  // ISO currency the prices are denominated in
 }
 
 /**
@@ -42,6 +44,7 @@ export function buildArticleCatalog(
       unitDp: prices.dp,
       unit: prices.unit,
       category: prices.category,
+      currency: prices.currency,
     })
   }
   entries.sort((a, b) => a.longName.localeCompare(b.longName))
@@ -97,9 +100,43 @@ export function buildArticlePriceMap(
 
     const msrp = toFloat(targetPl.getElementsByTagName('Msrp')[0]?.textContent)
     const dp = toFloat(targetPl.getElementsByTagName('Dp')[0]?.textContent)
+    const currency = targetPl.getElementsByTagName('Currency')[0]?.textContent?.trim() ?? ''
 
-    map.set(longName, { msrp, dp, sapNr, unit, category })
+    map.set(longName, { msrp, dp, sapNr, unit, category, currency })
   }
 
   return map
+}
+
+/**
+ * Parses CurrenciesData from config.xml and returns a map of ISO → latest
+ * exchange rate (relative to EUR, i.e. EUR=1.00, USD=1.15 means 1 EUR = 1.15 USD).
+ * For each ISO, picks the entry with the highest ValidFrom (most recent).
+ */
+export function parseCurrencyRates(configXml: string): Record<string, number> {
+  const rates: Record<string, number> = {}
+  const validFroms: Record<string, string> = {}
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(configXml, 'application/xml')
+  if (doc.querySelector('parsererror')) return rates
+
+  const currenciesData = doc.getElementsByTagName('CurrenciesData')[0]
+  if (!currenciesData) return rates
+
+  const currencies = currenciesData.getElementsByTagName('Currency')
+  for (let i = 0; i < currencies.length; i++) {
+    const el = currencies[i]
+    const iso = el.getElementsByTagName('Iso')[0]?.textContent?.trim() ?? ''
+    const rate = toFloat(el.getElementsByTagName('ExchangeRate')[0]?.textContent)
+    const validFrom = el.getElementsByTagName('ValidFrom')[0]?.textContent?.trim() ?? ''
+    if (!iso || rate === null) continue
+    // Keep the entry with the highest ValidFrom (lexicographic compare works for .NET ticks)
+    if (!validFroms[iso] || validFrom > validFroms[iso]) {
+      rates[iso] = rate
+      validFroms[iso] = validFrom
+    }
+  }
+
+  return rates
 }

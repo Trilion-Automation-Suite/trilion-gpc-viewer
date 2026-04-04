@@ -165,6 +165,7 @@ export interface ParseResult {
   originalItemNos: string[]   // nos of all items as parsed (for delete diffing)
   articleCatalog: ArticleCatalogEntry[]
   licenseCatalog: LicenseCatalogEntry[]
+  currencyRates: Record<string, number>  // ISO → EUR-based exchange rate from PDB
   fileHandle?: FileSystemFileHandle
   openInEditMode?: boolean
 }

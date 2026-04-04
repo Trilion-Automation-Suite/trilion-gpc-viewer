@@ -37,5 +37,14 @@ export async function repackOpc(
     throw new Error('repackOpc: order.xml not found in ZIP')
   }
 
+  // Remove spurious directory entries (e.g. _rels/) that JSZip may have
+  // created — .NET's OPC Package reader doesn't expect them and they can
+  // cause import failures in the GOM Product Configurator.
+  for (const name of Object.keys(zip.files)) {
+    if (zip.files[name].dir) {
+      zip.remove(name)
+    }
+  }
+
   return zip.generateAsync({ type: 'arraybuffer' })
 }

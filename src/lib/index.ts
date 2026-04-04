@@ -2,7 +2,7 @@ import type { OrderSummary, ParseResult } from '../types/order.js'
 import { decryptGpcFile } from './decrypt.js'
 import { unpackOpc } from './unpack.js'
 import { parseOrder } from './parseOrder.js'
-import { buildArticlePriceMap, buildArticleCatalog } from './parseConfig.js'
+import { buildArticlePriceMap, buildArticleCatalog, parseCurrencyRates } from './parseConfig.js'
 import { buildLicenseCatalog } from './parseLicenseCatalog.js'
 import { createBlankOrderXml } from './createBlankOrder.js'
 
@@ -74,6 +74,7 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
 
   const articleCatalog = configXml ? buildArticleCatalog(configXml, order.priceList) : []
   const licenseCatalog = buildLicenseCatalog(orderXml)
+  const currencyRates = configXml ? parseCurrencyRates(configXml) : {}
 
   return {
     order,
@@ -84,6 +85,7 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
     originalItemNos: order.items.map(i => i.no),
     articleCatalog,
     licenseCatalog,
+    currencyRates,
     fileHandle,
   }
 }
@@ -100,6 +102,7 @@ export async function createNewOrder(
 
   const articleCatalog = pdb ? buildArticleCatalog(pdb.configXml, order.priceList) : []
   const licenseCatalog = buildLicenseCatalog(orderXml)
+  const currencyRates = pdb ? parseCurrencyRates(pdb.configXml) : {}
 
   // For a new order we need a minimal ZIP with order.xml + config.xml.
   // We use JSZip to create the OPC structure.
@@ -116,7 +119,9 @@ export async function createNewOrder(
     pdb?.configXml ? '<Relationship Type="xml/gomconfig" Target="/config.xml" Id="R2" />' : '',
     pdb?.versionXml ? '<Relationship Type="xml/gomversion" Target="/version.xml" Id="R3" />' : '',
   ].filter(Boolean).join('')
-  zip.file('_rels/.rels', `<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`)
+  // createFolders:false prevents JSZip from adding a spurious _rels/ directory entry
+  // that .NET's OPC Package reader doesn't expect (real GPC files have no _rels/ entry).
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`, { createFolders: false })
   const zipBuffer = await zip.generateAsync({ type: 'arraybuffer' })
 
   return {
@@ -128,6 +133,7 @@ export async function createNewOrder(
     originalItemNos: [],
     articleCatalog,
     licenseCatalog,
+    currencyRates,
     fileHandle: undefined,
     openInEditMode: true,
   }

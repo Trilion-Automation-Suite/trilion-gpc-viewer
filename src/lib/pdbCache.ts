@@ -23,6 +23,7 @@ function openDb(): Promise<IDBDatabase> {
 export interface CachedPdb {
   configXml: string
   versionXml: string
+  currencyRates: Record<string, number>  // ISO → EUR-based exchange rate (EUR=1, USD=1.15, etc.)
   cachedAt: number  // Date.now()
 }
 

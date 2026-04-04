@@ -7,12 +7,14 @@
 
 import { decryptGpcFile } from './decrypt.js'
 import { unpackOpc } from './unpack.js'
+import { parseCurrencyRates } from './parseConfig.js'
 import { savePdbCache } from './pdbCache.js'
 import type { CachedPdb } from './pdbCache.js'
 
 export interface PdbContents {
   configXml: string
   versionXml: string
+  currencyRates: Record<string, number>
 }
 
 export async function loadPdbFile(file: File): Promise<PdbContents> {
@@ -40,15 +42,19 @@ export async function loadPdbFile(file: File): Promise<PdbContents> {
     throw new Error('loadPdbFile: config.xml not found in PDB — is this a valid .gproducts file?')
   }
 
+  const currencyRates = configXml ? parseCurrencyRates(configXml) : {}
+
   const result: PdbContents = {
     configXml,
     versionXml: versionXml ?? '',
+    currencyRates,
   }
 
   // Cache for future "New Order" use
   const cached: CachedPdb = {
     configXml: result.configXml,
     versionXml: result.versionXml,
+    currencyRates,
     cachedAt: Date.now(),
   }
   await savePdbCache(cached)
