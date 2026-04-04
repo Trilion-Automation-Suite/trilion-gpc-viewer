@@ -1,6 +1,7 @@
 import type { OrderAdministration } from '../types/order.ts'
 import { InfoGrid } from './InfoGrid.tsx'
 import { EditSection } from './EditSection.tsx'
+import { COUNTRIES } from '../lib/countries.ts'
 
 interface AdminTabProps {
   admin: OrderAdministration
@@ -44,7 +45,7 @@ export function AdminTab({ admin, isEditing, onChange }: AdminTabProps) {
             { label: 'City',           value: admin.invoiceCity,           onChange: ch('invoiceCity') },
             { label: 'State',          value: admin.invoiceState,          onChange: ch('invoiceState') },
             { label: 'ZIP',            value: admin.invoiceZip,            onChange: ch('invoiceZip') },
-            { label: 'Country',        value: admin.invoiceCountry,        onChange: ch('invoiceCountry') },
+            { label: 'Country',        value: admin.invoiceCountry,        onChange: ch('invoiceCountry'),        type: 'select' as const, options: COUNTRIES },
             { label: 'Payment Term',   value: admin.invoicePaymentTerm,    onChange: ch('invoicePaymentTerm') },
             { label: 'New Customer',   value: admin.invoiceNewCustomer,    onChange: ch('invoiceNewCustomer'),   type: 'checkbox' },
           ]}
@@ -66,7 +67,7 @@ export function AdminTab({ admin, isEditing, onChange }: AdminTabProps) {
             { label: 'City',                 value: admin.shippingCity,                onChange: ch('shippingCity') },
             { label: 'State',                value: admin.shippingState,               onChange: ch('shippingState') },
             { label: 'ZIP',                  value: admin.shippingZip,                 onChange: ch('shippingZip') },
-            { label: 'Country',              value: admin.shippingCountry,             onChange: ch('shippingCountry') },
+            { label: 'Country',              value: admin.shippingCountry,             onChange: ch('shippingCountry'),             type: 'select' as const, options: COUNTRIES },
             { label: 'Freight Term',         value: admin.shippingFreightTerm,         onChange: ch('shippingFreightTerm') },
             { label: 'Shipping Method',      value: admin.shippingMethod,              onChange: ch('shippingMethod') },
             { label: 'Special Instructions', value: admin.specialShippingInstructions, onChange: ch('specialShippingInstructions') },

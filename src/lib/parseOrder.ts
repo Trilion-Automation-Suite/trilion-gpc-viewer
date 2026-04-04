@@ -122,7 +122,9 @@ function extractSystemType(itemEl: Element): string {
 function parseDependentItem(el: Element, itemType: 'dependent' | 'sub'): ConfigItem {
   const no = childText(el, 'No')
   const ciEl = directChild(el, 'ConfigurationItem')
-  return {
+  const userZeissId = childText(el, 'Reply1') || undefined
+  const userName = childText(el, 'Reply2') || undefined
+  const item: ConfigItem = {
     no,
     label: no ? `Configuration item ${no}` : '',
     category: ciEl ? childText(ciEl, 'GroupLevel1') : '',
@@ -136,16 +138,21 @@ function parseDependentItem(el: Element, itemType: 'dependent' | 'sub'): ConfigI
     itemType,
     sections: parseSections(el),
   }
+  if (userZeissId !== undefined) item.userZeissId = userZeissId
+  if (userName !== undefined) item.userName = userName
+  return item
 }
 
 function collectSubItems(parentEl: Element): ConfigItem[] {
   const items: ConfigItem[] = []
   const subConf = directChild(parentEl, 'SubConfigurations')
   if (!subConf) return items
-  // SubConfigurations can contain any ConfigurationItemData subtype
+  // SubConfigurations can contain DependentListScreenData or ConfigurationItemData subtypes
   for (const el of Array.from(subConf.children)) {
-    items.push(parseDependentItem(el, 'sub'))
-    items.push(...collectSubItems(el))
+    if (el.tagName === 'DependentListScreenData' || el.tagName === 'ConfigurationItemData') {
+      items.push(parseDependentItem(el, 'sub'))
+      items.push(...collectSubItems(el))
+    }
   }
   return items
 }

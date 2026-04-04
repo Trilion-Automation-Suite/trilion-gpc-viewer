@@ -7,6 +7,9 @@ interface ConfigItemsTableProps {
   order: OrderSummary
   expanded: Set<string>
   onToggle: (key: string) => void
+  isEditing: boolean
+  onDelete: (no: string) => void
+  onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
 }
 
 function calcMargin(msrp: number | null, dp: number | null): number | null {
@@ -44,7 +47,37 @@ function ExpandIcon({ expanded }: { expanded: boolean }) {
   )
 }
 
-function SectionRows({ sections, dec }: { sections: SectionDetail[]; dec: number }) {
+function TrashIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  )
+}
+
+function SectionRows({
+  sections,
+  dec,
+  colSpan,
+}: {
+  sections: SectionDetail[]
+  dec: number
+  colSpan: number
+}) {
   return (
     <>
       {sections.map((sec, si) => (
@@ -52,7 +85,7 @@ function SectionRows({ sections, dec }: { sections: SectionDetail[]; dec: number
           {sec.name && (
             <tr className="row-section-header">
               <td className="detail-section-indent" />
-              <td colSpan={6} className="section-header-cell">
+              <td colSpan={colSpan - 1} className="section-header-cell">
                 <span className="section-label">{sec.name}</span>
               </td>
             </tr>
@@ -80,13 +113,15 @@ function SectionRows({ sections, dec }: { sections: SectionDetail[]; dec: number
                 <td className="right"><PriceCell value={lineListPrice} dec={dec} /></td>
                 <td className="right"><PriceCell value={lineDistributor} dec={dec} /></td>
                 <td className="right"><MarginCell value={lineMargin} /></td>
+                {/* empty cell to match delete column */}
+                <td />
               </tr>
             )
           })}
           {sec.comments && (
             <tr className="row-section-comment">
               <td className="detail-section-indent" />
-              <td colSpan={6}>
+              <td colSpan={colSpan - 1}>
                 <p className="section-comment">{sec.comments}</p>
               </td>
             </tr>
@@ -97,16 +132,73 @@ function SectionRows({ sections, dec }: { sections: SectionDetail[]; dec: number
   )
 }
 
+function UserFieldsRow({
+  item,
+  isEditing,
+  onLicenseUserChange,
+  colSpan,
+}: {
+  item: ConfigItem
+  isEditing: boolean
+  onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
+  colSpan: number
+}) {
+  const hasUserFields = item.userZeissId !== undefined || item.userName !== undefined
+  if (!hasUserFields) return null
+
+  return (
+    <tr className="user-fields-row">
+      <td className="user-fields-indent" />
+      <td colSpan={colSpan - 1}>
+        {isEditing ? (
+          <div className="user-fields-inputs">
+            <input
+              className="user-field-input"
+              placeholder="ZEISS ID / email"
+              value={item.userZeissId ?? ''}
+              onChange={e => onLicenseUserChange(item.no, { userZeissId: e.target.value })}
+              aria-label="License user ZEISS ID"
+            />
+            <input
+              className="user-field-input"
+              placeholder="User name"
+              value={item.userName ?? ''}
+              onChange={e => onLicenseUserChange(item.no, { userName: e.target.value })}
+              aria-label="License user name"
+            />
+          </div>
+        ) : (
+          <span className="user-fields-view">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ marginRight: 5, verticalAlign: 'middle' }}>
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            {item.userName && <span>{item.userName}</span>}
+            {item.userName && item.userZeissId && <span className="user-fields-sep"> — </span>}
+            {item.userZeissId && <span className="user-fields-zeissid">{item.userZeissId}</span>}
+          </span>
+        )}
+      </td>
+    </tr>
+  )
+}
+
 function ItemRow({
   item,
   expanded,
   onToggle,
   dec,
+  isEditing,
+  onDelete,
+  onLicenseUserChange,
 }: {
   item: ConfigItem
   expanded: boolean
   onToggle: () => void
   dec: number
+  isEditing: boolean
+  onDelete: (no: string) => void
+  onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
 }) {
   const margin = calcMargin(item.totalMsrp, item.totalDp)
 
@@ -117,7 +209,8 @@ function ItemRow({
     .filter(Boolean)
     .join(' ')
 
-  const hasDetail = item.sections.length > 0
+  const hasDetail = item.sections.length > 0 || item.userZeissId !== undefined || item.userName !== undefined
+  const colSpan = 8  // 7 data cols + 1 delete col
 
   return (
     <>
@@ -145,13 +238,32 @@ function ItemRow({
         <td className="right"><PriceCell value={item.totalMsrp} dec={dec} /></td>
         <td className="right"><PriceCell value={item.totalDp} dec={dec} /></td>
         <td className="right"><MarginCell value={margin} /></td>
+        <td className="item-delete-cell">
+          {isEditing && (
+            <button
+              className="item-delete-btn"
+              onClick={(e) => { e.stopPropagation(); onDelete(item.no) }}
+              title={`Delete item ${item.no}`}
+              aria-label={`Delete item ${item.no}`}
+            >
+              <TrashIcon />
+            </button>
+          )}
+        </td>
       </tr>
-      {expanded && hasDetail && <SectionRows sections={item.sections} dec={dec} />}
+      {expanded && (
+        <>
+          {(item.userZeissId !== undefined || item.userName !== undefined) && (
+            <UserFieldsRow item={item} isEditing={isEditing} onLicenseUserChange={onLicenseUserChange} colSpan={colSpan} />
+          )}
+          {item.sections.length > 0 && <SectionRows sections={item.sections} dec={dec} colSpan={colSpan} />}
+        </>
+      )}
     </>
   )
 }
 
-export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTableProps) {
+export function ConfigItemsTable({ order, expanded, onToggle, isEditing, onDelete, onLicenseUserChange }: ConfigItemsTableProps) {
   const topLevelVisible = order.items.filter((i) => !i.isSub && !i.isHidden)
   const totals = topLevelVisible.reduce(
     (acc, item) => ({
@@ -186,6 +298,7 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
             <th className="right">List Price</th>
             <th className="right">Distributor</th>
             <th className="right">Margin</th>
+            <th style={{ width: 32 }} />
           </tr>
         </thead>
         <tbody>
@@ -198,6 +311,9 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
                 expanded={expanded.has(key)}
                 onToggle={() => onToggle(key)}
                 dec={dec}
+                isEditing={isEditing}
+                onDelete={onDelete}
+                onLicenseUserChange={onLicenseUserChange}
               />
             )
           })}
@@ -208,9 +324,11 @@ export function ConfigItemsTable({ order, expanded, onToggle }: ConfigItemsTable
             <td className="right">{totals.msrp > 0 ? formatPrice(totals.msrp, dec) : '—'}</td>
             <td className="right">{totals.dp > 0 ? formatPrice(totals.dp, dec) : '—'}</td>
             <td className="right"><MarginCell value={totalMargin} /></td>
+            <td />
           </tr>
         </tfoot>
       </table>
     </div>
   )
 }
+

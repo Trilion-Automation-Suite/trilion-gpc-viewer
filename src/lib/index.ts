@@ -2,7 +2,9 @@ import type { OrderSummary, ParseResult } from '../types/order.js'
 import { decryptGpcFile } from './decrypt.js'
 import { unpackOpc } from './unpack.js'
 import { parseOrder } from './parseOrder.js'
-import { buildArticlePriceMap } from './parseConfig.js'
+import { buildArticlePriceMap, buildArticleCatalog } from './parseConfig.js'
+import { buildLicenseCatalog } from './parseLicenseCatalog.js'
+import { createBlankOrderXml } from './createBlankOrder.js'
 
 /** Mutates article rows in-place with prices from the config.xml price map. */
 function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof buildArticlePriceMap>): void {
@@ -70,13 +72,64 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
     enrichArticlePrices(order, priceMap)
   }
 
+  const articleCatalog = configXml ? buildArticleCatalog(configXml, order.priceList) : []
+  const licenseCatalog = buildLicenseCatalog(orderXml)
+
   return {
     order,
     gpcVersion,
     sourceFile: file.name,
     rawOrderXml: orderXml,
     rawDecryptedBuffer: decrypted,
+    originalItemNos: order.items.map(i => i.no),
+    articleCatalog,
+    licenseCatalog,
     fileHandle,
+  }
+}
+
+/**
+ * Creates a new blank order ParseResult from optional cached PDB contents.
+ * Used when the user clicks "New Order" (with or without a cached PDB).
+ */
+export async function createNewOrder(
+  pdb: { configXml: string; versionXml: string } | null
+): Promise<ParseResult> {
+  const orderXml = createBlankOrderXml()
+  const order = parseOrder(orderXml)
+
+  const articleCatalog = pdb ? buildArticleCatalog(pdb.configXml, order.priceList) : []
+  const licenseCatalog = buildLicenseCatalog(orderXml)
+
+  // For a new order we need a minimal ZIP with order.xml + config.xml.
+  // We use JSZip to create the OPC structure.
+  const JSZip = (await import('jszip')).default
+  const zip = new JSZip()
+  zip.file('order.xml', orderXml)
+  if (pdb?.configXml) zip.file('config.xml', pdb.configXml)
+  if (pdb?.versionXml) zip.file('version.xml', pdb.versionXml)
+  // OPC structure required by GPC — must have _rels/.rels with xml/gomorder relationship
+  // and correct content types (text/xml + rels type), otherwise GPC rejects the file.
+  zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="text/xml" /><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" /></Types>')
+  const rels = [
+    '<Relationship Type="xml/gomorder" Target="/order.xml" Id="R1" />',
+    pdb?.configXml ? '<Relationship Type="xml/gomconfig" Target="/config.xml" Id="R2" />' : '',
+    pdb?.versionXml ? '<Relationship Type="xml/gomversion" Target="/version.xml" Id="R3" />' : '',
+  ].filter(Boolean).join('')
+  zip.file('_rels/.rels', `<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`)
+  const zipBuffer = await zip.generateAsync({ type: 'arraybuffer' })
+
+  return {
+    order,
+    gpcVersion: '',
+    sourceFile: 'New Order.gconfiguration',
+    rawOrderXml: orderXml,
+    rawDecryptedBuffer: zipBuffer,
+    originalItemNos: [],
+    articleCatalog,
+    licenseCatalog,
+    fileHandle: undefined,
+    openInEditMode: true,
   }
 }
 

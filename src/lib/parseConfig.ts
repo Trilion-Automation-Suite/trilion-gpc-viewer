@@ -11,6 +11,41 @@ export interface ArticlePrices {
   dp: number | null
   sapNr: string
   unit: string
+  category: string
+}
+
+export interface ArticleCatalogEntry {
+  longName: string
+  sapNr: string
+  unitMsrp: number | null
+  unitDp: number | null
+  unit: string
+  category: string
+}
+
+/**
+ * Returns every article in config.xml as a flat sorted array for use in
+ * the product-search picker.  Prices are resolved for the given priceList
+ * (falls back to first available, same logic as buildArticlePriceMap).
+ */
+export function buildArticleCatalog(
+  configXml: string,
+  priceListName: string
+): ArticleCatalogEntry[] {
+  const map = buildArticlePriceMap(configXml, priceListName)
+  const entries: ArticleCatalogEntry[] = []
+  for (const [longName, prices] of map) {
+    entries.push({
+      longName,
+      sapNr: prices.sapNr,
+      unitMsrp: prices.msrp,
+      unitDp: prices.dp,
+      unit: prices.unit,
+      category: prices.category,
+    })
+  }
+  entries.sort((a, b) => a.longName.localeCompare(b.longName))
+  return entries
 }
 
 /** Parse a decimal string, return null if absent or NaN. */
@@ -45,6 +80,7 @@ export function buildArticlePriceMap(
 
     const sapNr = article.getElementsByTagName('SapNr')[0]?.textContent?.trim() ?? ''
     const unit = article.getElementsByTagName('Unit')[0]?.textContent?.trim() ?? ''
+    const category = article.getElementsByTagName('GroupLevel1')[0]?.textContent?.trim() ?? ''
 
     const priceLists = Array.from(article.getElementsByTagName('ArticlePriceList'))
     if (priceLists.length === 0) continue
@@ -59,7 +95,7 @@ export function buildArticlePriceMap(
     const msrp = toFloat(targetPl.getElementsByTagName('Msrp')[0]?.textContent)
     const dp = toFloat(targetPl.getElementsByTagName('Dp')[0]?.textContent)
 
-    map.set(longName, { msrp, dp, sapNr, unit })
+    map.set(longName, { msrp, dp, sapNr, unit, category })
   }
 
   return map

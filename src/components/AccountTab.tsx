@@ -1,6 +1,7 @@
 import type { AccountDetails } from '../types/order.ts'
 import { InfoGrid, formatPhone } from './InfoGrid.tsx'
 import { EditSection } from './EditSection.tsx'
+import { COUNTRIES } from '../lib/countries.ts'
 
 interface AccountTabProps {
   account: AccountDetails
@@ -42,7 +43,7 @@ export function AccountTab({ account, isEditing, onChange }: AccountTabProps) {
             { label: 'City',            value: account.city,           onChange: ch('city') },
             { label: 'State/Province',  value: account.stateProvince,  onChange: ch('stateProvince') },
             { label: 'ZIP/Postal Code', value: account.zipPostalCode,  onChange: ch('zipPostalCode') },
-            { label: 'Country',         value: account.country,        onChange: ch('country') },
+            { label: 'Country',         value: account.country,        onChange: ch('country'),        type: 'select', options: COUNTRIES },
           ]}
         />
         <EditSection

@@ -1,8 +1,10 @@
 declare const __APP_VERSION__: string
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
-import { loadGpcFile } from './lib/index.ts'
+import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
+import { loadGpcFile, createNewOrder } from './lib/index.ts'
+import { loadPdbFile } from './lib/loadPdbFile.ts'
+import { loadPdbCache } from './lib/pdbCache.ts'
 import { saveGpcFile } from './lib/saveGpcFile.ts'
 import { FilePicker } from './components/FilePicker.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
@@ -16,6 +18,11 @@ import { CommentsTab } from './components/CommentsTab.tsx'
 import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
+
+function nextItemNo(items: ConfigItem[]): string {
+  const topLevel = items.filter(i => !i.isSub).map(i => parseInt(i.no, 10)).filter(n => !isNaN(n))
+  return String(topLevel.length > 0 ? Math.max(...topLevel) + 1 : 1)
+}
 
 type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments'
 const TAB_LABELS: Record<Tab, string> = {
@@ -36,6 +43,7 @@ export function App() {
   const [state, setState] = useState<AppState>({ status: 'idle' })
   const [darkMode, setDarkMode] = useState(false)
   const [tab, setTab] = useState<Tab>('items')
+  const [pdbCached, setPdbCached] = useState<boolean | null>(null)  // null = not checked yet
 
   // Mutable order copy — this is what the tab components read/write in edit mode
   const [order, setOrder] = useState<OrderSummary | null>(null)
@@ -48,11 +56,15 @@ export function App() {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
   }, [darkMode])
 
+  useEffect(() => {
+    loadPdbCache().then(cached => setPdbCached(cached !== null)).catch(() => setPdbCached(false))
+  }, [])
+
   // Sync mutable order copy whenever a new file is loaded
   useEffect(() => {
     if (state.status === 'loaded') {
       setOrder(state.result.order)
-      setIsEditing(false)
+      setIsEditing(state.result.openInEditMode ?? false)
       setIsDirty(false)
       setFileHandle(state.result.fileHandle)
     } else {
@@ -63,7 +75,23 @@ export function App() {
     }
   }, [state])
 
+  const handlePdbFile = useCallback(async (file: File) => {
+    setState({ status: 'loading' })
+    try {
+      const pdb = await loadPdbFile(file)
+      setPdbCached(true)
+      const result = await createNewOrder(pdb)
+      setState({ status: 'loaded', result })
+    } catch (err) {
+      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+    }
+  }, [])
+
   const handleFile = useCallback(async (file: File, handle?: FileSystemFileHandle) => {
+    if (file.name.endsWith('.gproducts')) {
+      await handlePdbFile(file)
+      return
+    }
     setState({ status: 'loading' })
     try {
       const result = await loadGpcFile(file, handle)
@@ -75,10 +103,21 @@ export function App() {
           : 'An unknown error occurred while reading the file.'
       setState({ status: 'error', message })
     }
-  }, [])
+  }, [handlePdbFile])
 
   const handleRetry = useCallback(() => {
     setState({ status: 'idle' })
+  }, [])
+
+  const handleNewOrder = useCallback(async () => {
+    setState({ status: 'loading' })
+    try {
+      const cached = await loadPdbCache()
+      const result = await createNewOrder(cached)
+      setState({ status: 'loaded', result })
+    } catch (err) {
+      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+    }
   }, [])
 
   // Clipboard paste — fires when the user copies a file in Explorer/Outlook and presses Ctrl+V
@@ -124,6 +163,82 @@ export function App() {
     setIsDirty(true)
   }, [])
 
+  const handleItemDelete = useCallback((no: string) => {
+    setOrder(prev => prev ? { ...prev, items: prev.items.filter(i => i.no !== no) } : null)
+    setIsDirty(true)
+  }, [])
+
+  const handleAddProduct = useCallback((fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string }) => {
+    setOrder(prev => {
+      if (!prev) return null
+      const no = nextItemNo(prev.items)
+      const newItem: ConfigItem = {
+        no,
+        label: `Configuration item ${no}`,
+        category: fields.category,
+        name: fields.name,
+        systemType: '',
+        totalMsrp: null,
+        totalDp: null,
+        discountOverride: null,
+        isHidden: false,
+        isSub: false,
+        itemType: 'free',
+        isNew: true,
+        sections: [{ name: '', articles: [{ name: fields.name, amount: fields.amount, unit: fields.unit || 'pcs', priceOnRequest: false, unitMsrp: fields.unitMsrp, unitDp: fields.unitDp, sapNr: fields.sapNr }], comments: '' }],
+      }
+      return { ...prev, items: [...prev.items, newItem] }
+    })
+    setIsDirty(true)
+  }, [])
+
+  const handleAddLicense = useCallback((fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => {
+    setOrder(prev => {
+      if (!prev) return null
+      const licenseNo = nextItemNo(prev.items)
+      const smaNo = `${licenseNo}.1`
+      const licenseItem: ConfigItem = {
+        no: licenseNo,
+        label: `Configuration item ${licenseNo}`,
+        category: 'Software License',
+        name: fields.name,
+        systemType: '',
+        totalMsrp: null,
+        totalDp: null,
+        discountOverride: null,
+        isHidden: false,
+        isSub: false,
+        itemType: 'dependent',
+        isNew: true,
+        sections: [],
+      }
+      const smaItem: ConfigItem = {
+        no: smaNo,
+        label: `SMA for ${fields.name}`,
+        category: 'Software License',
+        name: 'SMA',
+        systemType: '',
+        totalMsrp: null,
+        totalDp: null,
+        discountOverride: null,
+        isHidden: false,
+        isSub: true,
+        itemType: 'sub',
+        isNew: true,
+        sections: [],
+        userZeissId: fields.userZeissId,
+        userName: fields.userName,
+      }
+      return { ...prev, items: [...prev.items, licenseItem, smaItem] }
+    })
+    setIsDirty(true)
+  }, [])
+
+  const handleLicenseUserChange = useCallback((no: string, patch: { userZeissId?: string; userName?: string }) => {
+    setOrder(prev => prev ? { ...prev, items: prev.items.map(i => i.no === no ? { ...i, ...patch } : i) } : null)
+    setIsDirty(true)
+  }, [])
+
   const handleDiscard = useCallback(() => {
     if (state.status === 'loaded') {
       setOrder(state.result.order)
@@ -140,7 +255,8 @@ export function App() {
         state.result.rawOrderXml,
         order,
         state.result.sourceFile,
-        fileHandle
+        fileHandle,
+        state.result.originalItemNos
       )
       setIsDirty(false)
     } catch (err) {
@@ -339,6 +455,24 @@ export function App() {
       <main className="app">
         {state.status === 'idle' && (
           <div className="app-idle">
+            {pdbCached !== null && (
+              <div className="new-order-bar">
+                <button
+                  className="new-order-btn"
+                  onClick={handleNewOrder}
+                  title={pdbCached ? 'Create a new blank order using cached PDB' : 'Drop a .gproducts file to create a new order'}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  New Order
+                </button>
+                {!pdbCached && (
+                  <span className="new-order-hint">Drop a .gproducts file here or use the button above to create a new order. The PDB will be cached locally.</span>
+                )}
+              </div>
+            )}
             <FilePicker onFile={handleFile} />
           </div>
         )}
@@ -377,7 +511,18 @@ export function App() {
               ))}
             </nav>
             <div className="tab-content">
-              {tab === 'items' && <ItemsTab order={order} />}
+              {tab === 'items' && (
+                <ItemsTab
+                  order={order}
+                  isEditing={isEditing}
+                  onDelete={handleItemDelete}
+                  onAddProduct={handleAddProduct}
+                  onAddLicense={handleAddLicense}
+                  onLicenseUserChange={handleLicenseUserChange}
+                  articleCatalog={state.status === 'loaded' ? state.result.articleCatalog : []}
+                  licenseCatalog={state.status === 'loaded' ? state.result.licenseCatalog : []}
+                />
+              )}
               {tab === 'account' && (
                 <AccountTab
                   account={order.account}

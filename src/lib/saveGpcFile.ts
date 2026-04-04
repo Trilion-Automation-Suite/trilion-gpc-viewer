@@ -17,10 +17,11 @@ export async function saveGpcFile(
   rawOrderXml: string,
   order: OrderSummary,
   sourceFilename: string,
-  fileHandle?: FileSystemFileHandle
+  fileHandle?: FileSystemFileHandle,
+  originalItemNos: string[] = []
 ): Promise<void> {
   // 1. Patch order.xml DOM with edited values
-  const patchedXml = patchOrderXml(rawOrderXml, order)
+  const patchedXml = patchOrderXml(rawOrderXml, order, originalItemNos)
 
   // 2. Rebuild the ZIP with the patched order.xml (all other entries preserved)
   const newZipBuffer = await repackOpc(rawDecryptedBuffer, patchedXml)

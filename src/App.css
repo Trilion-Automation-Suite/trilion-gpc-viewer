@@ -170,11 +170,16 @@
 /* ── Idle state — full viewport drop zone ───────────────────────── */
 .app-idle {
   display: flex;
+  flex-direction: column;
   align-items: stretch;
-  justify-content: stretch;
   height: calc(100dvh - 52px - 160px);
   min-height: 280px;
   margin: -24px -16px 0;
+  padding: 24px 16px 0;
+}
+
+.app-idle .file-picker-wrapper {
+  flex: 1;
 }
 
 /* ── Loading overlay ─────────────────────────────────────────────── */
@@ -400,4 +405,34 @@
   max-width: 680px;
   line-height: 1.6;
   text-align: center;
+}
+
+.new-order-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.new-order-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-accent, #3b82f6);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.new-order-btn:hover { opacity: 0.88; }
+.new-order-btn:active { opacity: 0.75; }
+
+.new-order-hint {
+  font-size: 0.78rem;
+  color: var(--color-muted, #888);
 }

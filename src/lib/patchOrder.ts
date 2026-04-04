@@ -11,7 +11,7 @@
  * files and verified against parseOrder.ts.
  */
 
-import type { AccountDetails, OrderAdministration, OrderSummary, TechnicalContact } from '../types/order.js'
+import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, TechnicalContact } from '../types/order.js'
 
 // ---------------------------------------------------------------------------
 // DOM helpers
@@ -165,6 +165,196 @@ function patchOrderAdministration(doc: Document, admin: OrderAdministration): vo
 }
 
 // ---------------------------------------------------------------------------
+// Item-level helpers
+// ---------------------------------------------------------------------------
+
+/** Find or create a direct child element with the given tagName on doc root. */
+function findOrCreateRootChild(doc: Document, tagName: string): Element {
+  for (const child of Array.from(doc.documentElement.children)) {
+    if (child.tagName === tagName) return child
+  }
+  const el = doc.createElement(tagName)
+  doc.documentElement.appendChild(el)
+  return el
+}
+
+/** Return the text content of a direct child element, or null if absent. */
+function directChildText(parent: Element, tagName: string): string | null {
+  for (const child of Array.from(parent.children)) {
+    if (child.tagName === tagName) return child.textContent?.trim() ?? ''
+  }
+  return null
+}
+
+/**
+ * Walk a container element's direct children (and optionally recurse into
+ * SubConfigurations) looking for a row whose <No> text matches one of the
+ * given nos. Remove matching rows.
+ */
+function removeMatchingRows(container: Element, deletedNos: Set<string>, recurse: boolean): void {
+  const toRemove: Element[] = []
+  for (const child of Array.from(container.children)) {
+    const no = directChildText(child, 'No')
+    if (no !== null && deletedNos.has(no)) {
+      toRemove.push(child)
+    } else if (recurse) {
+      // Check SubConfigurations recursively
+      for (const subChild of Array.from(child.children)) {
+        if (subChild.tagName === 'SubConfigurations') {
+          removeMatchingRows(subChild, deletedNos, true)
+        }
+      }
+    }
+  }
+  for (const el of toRemove) {
+    el.parentElement?.removeChild(el)
+  }
+}
+
+/**
+ * Remove items whose nos are in deletedNos from all item containers and
+ * their SubConfigurations descendants.
+ */
+function removeItemsFromXml(doc: Document, deletedNos: Set<string>): void {
+  if (deletedNos.size === 0) return
+  const containerTags = [
+    'DependentListsData',
+    'FreeArticlesData',
+    'FreeListArticlesData',
+    'SupportArticlesData',
+  ]
+  for (const tag of containerTags) {
+    const candidates = doc.getElementsByTagName(tag)
+    for (let i = 0; i < candidates.length; i++) {
+      removeMatchingRows(candidates[i], deletedNos, true)
+    }
+  }
+}
+
+/** Append a new FreeArticlesScreenData element for a free-article item. */
+function insertFreeArticleItems(doc: Document, newItems: ConfigItem[]): void {
+  if (newItems.length === 0) return
+  const container = findOrCreateRootChild(doc, 'FreeArticlesData')
+  for (const item of newItems) {
+    const art = item.sections[0]?.articles[0]
+    const artName = art?.name ?? item.name
+    const artAmount = art?.amount ?? 1
+    const artUnit = art?.unit ?? 'pcs'
+
+    const rowXml = `<FreeArticlesScreenData>` +
+      `<No>${item.no}</No>` +
+      `<ConfigurationItem><Name>${escapeXml(item.name)}</Name><GroupLevel1>${escapeXml(item.category)}</GroupLevel1></ConfigurationItem>` +
+      `<TotalMsrp></TotalMsrp><TotalDp></TotalDp><Discount></Discount>` +
+      `<IsHidden>false</IsHidden>` +
+      `<FreeArticles>` +
+        `<FreeArticle>` +
+          `<Article><LongName>${escapeXml(artName)}</LongName><SapNr></SapNr><Unit>${escapeXml(artUnit)}</Unit></Article>` +
+          `<Amount>${artAmount}</Amount><Unit>${escapeXml(artUnit)}</Unit>` +
+          `<Msrp></Msrp><Dp></Dp><PriceOnRequest>false</PriceOnRequest>` +
+        `</FreeArticle>` +
+      `</FreeArticles>` +
+      `</FreeArticlesScreenData>`
+    const frag = new DOMParser().parseFromString(rowXml, 'application/xml')
+    const imported = doc.importNode(frag.documentElement, true)
+    container.appendChild(imported)
+  }
+}
+
+/** Append a new DependentListScreenData element for a software license item. */
+function insertLicenseItems(doc: Document, newItems: ConfigItem[], allItems: ConfigItem[] = []): void {
+  if (newItems.length === 0) return
+  const container = findOrCreateRootChild(doc, 'DependentListsData')
+  for (const item of newItems) {
+    const smaNo = `${item.no}.1`
+    // Look up the SMA sub-item in allItems to get user fields
+    const smaItem = allItems.find(i => i.no === smaNo)
+    const smaUserZeissId = smaItem?.userZeissId ?? ''
+    const smaUserName = smaItem?.userName ?? ''
+
+    const rowXml = `<DependentListScreenData>` +
+      `<No>${item.no}</No>` +
+      `<ConfigurationItem>` +
+        `<Name>${escapeXml(item.name)}</Name>` +
+        `<GroupLevel1>Software License</GroupLevel1>` +
+        `<GroupLevel2></GroupLevel2>` +
+        `<ItemType>DependentList</ItemType>` +
+        `<AdditionalMandatoryFields>true</AdditionalMandatoryFields>` +
+      `</ConfigurationItem>` +
+      `<TotalMsrp></TotalMsrp><TotalDp></TotalDp><Discount></Discount>` +
+      `<IsHidden>false</IsHidden>` +
+      `<Sections />` +
+      `<SubConfigurations>` +
+        `<ConfigurationItemData>` +
+          `<No>${smaNo}</No>` +
+          `<Reply1>${escapeXml(smaUserZeissId)}</Reply1>` +
+          `<Reply2>${escapeXml(smaUserName)}</Reply2>` +
+          `<ConfigurationItem>` +
+            `<Name>SMA</Name>` +
+            `<GroupLevel1>SMA</GroupLevel1>` +
+            `<ItemType>DependentList</ItemType>` +
+          `</ConfigurationItem>` +
+          `<TotalMsrp></TotalMsrp><TotalDp></TotalDp><Discount></Discount>` +
+          `<IsHidden>false</IsHidden>` +
+          `<Sections />` +
+          `<SubConfigurations />` +
+        `</ConfigurationItemData>` +
+      `</SubConfigurations>` +
+      `</DependentListScreenData>`
+    const frag = new DOMParser().parseFromString(rowXml, 'application/xml')
+    const imported = doc.importNode(frag.documentElement, true)
+    container.appendChild(imported)
+  }
+}
+
+/**
+ * Find an element in a container (or recursively in SubConfigurations)
+ * whose <No> direct child matches the given no.
+ */
+function findElementByNo(container: Element, no: string): Element | null {
+  for (const child of Array.from(container.children)) {
+    const childNo = directChildText(child, 'No')
+    if (childNo === no) return child
+    // Recurse into SubConfigurations
+    for (const grandchild of Array.from(child.children)) {
+      if (grandchild.tagName === 'SubConfigurations') {
+        const found = findElementByNo(grandchild, no)
+        if (found) return found
+      }
+    }
+  }
+  return null
+}
+
+/** Patch Reply1 (email) and Reply2 (name) for SMA sub-items that have user fields set. */
+function patchLicenseUserFields(doc: Document, items: ConfigItem[]): void {
+  const relevantItems = items.filter(i => i.userZeissId !== undefined || i.userName !== undefined)
+  if (relevantItems.length === 0) return
+
+  // Search in DependentListsData containers (findElementByNo recurses into SubConfigurations)
+  const candidates = doc.getElementsByTagName('DependentListsData')
+  for (const item of relevantItems) {
+    for (let i = 0; i < candidates.length; i++) {
+      const el = findElementByNo(candidates[i], item.no)
+      if (el) {
+        if (item.userZeissId !== undefined) setChildTag(el, 'Reply1', item.userZeissId)
+        if (item.userName !== undefined) setChildTag(el, 'Reply2', item.userName)
+        break
+      }
+    }
+  }
+}
+
+/** Escape special XML characters in text content. */
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
@@ -173,7 +363,7 @@ function patchOrderAdministration(doc: Document, admin: OrderAdministration): vo
  * string and returns the modified XML.  Non-editable fields (prices, line
  * items, configuration data) are left completely untouched.
  */
-export function patchOrderXml(originalXml: string, order: OrderSummary): string {
+export function patchOrderXml(originalXml: string, order: OrderSummary, originalItemNos: string[] = []): string {
   const parser = new DOMParser()
   const doc = parser.parseFromString(originalXml, 'application/xml')
 
@@ -186,6 +376,14 @@ export function patchOrderXml(originalXml: string, order: OrderSummary): string 
   patchAccountDetails(doc, order.account)
   patchTechnicalContact(doc, order.contact)
   patchOrderAdministration(doc, order.administration)
+
+  // Compute deleted nos: in originalItemNos but not in current order.items
+  const currentNos = new Set(order.items.map(i => i.no))
+  const deletedNos = new Set(originalItemNos.filter(n => !currentNos.has(n)))
+  removeItemsFromXml(doc, deletedNos)
+  insertFreeArticleItems(doc, order.items.filter(i => i.isNew === true && i.itemType === 'free'))
+  insertLicenseItems(doc, order.items.filter(i => i.isNew === true && i.itemType === 'dependent'), order.items)
+  patchLicenseUserFields(doc, order.items)
 
   return new XMLSerializer().serializeToString(doc)
 }

@@ -1,3 +1,6 @@
+import type { ArticleCatalogEntry } from '../lib/parseConfig.js'
+import type { LicenseCatalogEntry } from '../lib/parseLicenseCatalog.js'
+
 export interface AccountDetails {
   companyName: string
   companyNameTwo: string
@@ -148,6 +151,9 @@ export interface ConfigItem {
   isSub: boolean           // true if no contains "."
   itemType: 'dependent' | 'free' | 'freeList' | 'support' | 'sub'
   sections: SectionDetail[] // article-level breakdown (empty for non-dependent types)
+  userZeissId?: string     // license user ZEISS ID / email
+  userName?: string        // license user name
+  isNew?: boolean          // true for items created in this session (not from XML)
 }
 
 export interface ParseResult {
@@ -156,5 +162,9 @@ export interface ParseResult {
   sourceFile: string
   rawOrderXml: string      // original order.xml text — used to patch + repack on save
   rawDecryptedBuffer: ArrayBuffer  // decrypted ZIP bytes — used to repack on save
+  originalItemNos: string[]   // nos of all items as parsed (for delete diffing)
+  articleCatalog: ArticleCatalogEntry[]
+  licenseCatalog: LicenseCatalogEntry[]
   fileHandle?: FileSystemFileHandle
+  openInEditMode?: boolean
 }

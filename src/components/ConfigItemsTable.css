@@ -294,3 +294,90 @@
   padding-left: 4px;
   border-left: 2px solid var(--border);
 }
+
+/* Delete button column */
+.item-delete-cell {
+  width: 32px;
+  padding: 0 4px !important;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.item-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+
+.item-delete-btn:hover {
+  color: #dc2626;
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.07);
+}
+
+/* User fields sub-row */
+.user-fields-row td {
+  padding: 3px 12px 5px;
+  background: var(--bg-card-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.user-fields-indent {
+  width: 4px !important;
+  padding: 0 !important;
+  background: var(--accent) !important;
+  opacity: 0.25;
+}
+
+.user-fields-view {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.user-fields-sep {
+  color: var(--text-faint);
+  margin: 0 2px;
+}
+
+.user-fields-zeissid {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.user-fields-inputs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.user-field-input {
+  flex: 1;
+  min-width: 120px;
+  max-width: 240px;
+  padding: 3px 7px;
+  font-size: 0.78rem;
+  background: var(--bg-card);
+  border: 1px solid var(--color-border, var(--border));
+  border-radius: 5px;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.user-field-input:focus {
+  border-color: var(--accent);
+}
