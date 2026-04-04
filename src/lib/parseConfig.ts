@@ -83,7 +83,7 @@ export function buildArticlePriceMap(
     // The GPC ordering tool uses MPG (not GroupLevel1) as ConfigurationItem.GroupLevel1 in the
     // order XML — e.g. "Calibration Object" articles are categorised as "Spareparts" (the MPG).
     const mpg = article.getElementsByTagName('MPG')[0]?.textContent?.trim() ?? ''
-    const category = mpg || article.getElementsByTagName('GroupLevel1')[0]?.textContent?.trim() ?? ''
+    const category = mpg || (article.getElementsByTagName('GroupLevel1')[0]?.textContent?.trim() ?? '')
 
     const priceLists = Array.from(article.getElementsByTagName('ArticlePriceList'))
     if (priceLists.length === 0) continue

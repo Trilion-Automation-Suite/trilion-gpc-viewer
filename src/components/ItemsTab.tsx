@@ -201,7 +201,7 @@ export function ItemsTab({
     })
   }, [])
 
-  function handleAddProduct(fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string }) {
+  function handleAddProduct(fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string }) {
     onAddProduct(fields)
     setActiveModal(null)
   }
