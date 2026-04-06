@@ -285,6 +285,9 @@ function insertFreeArticleItems(doc: Document, newItems: ConfigItem[]): void {
       buildConfigurationItemXml(item.name, item.category, 'FreeArticle', artSapNr) +
       `<UseInCalculation>true</UseInCalculation>` +
       `<No>${item.no}</No>` +
+      `<Reply1 />` +
+      `<Reply2 />` +
+      `<Reply3 />` +
       `<TotalDp ${NIL} />` +
       `<TotalMsrp ${NIL} />` +
       `<Discount ${NIL} />` +
@@ -314,20 +317,26 @@ function insertFreeArticleItems(doc: Document, newItems: ConfigItem[]): void {
 }
 
 /** Append a new DependentListScreenData element for a software license item.
- *  Element order matches the C# ConfigurationItemData base → DependentListScreenData hierarchy. */
+ *  Element order matches the C# ConfigurationItemData base properties exactly:
+ *  ConfigurationItem > UseInCalculation > No > Reply1 > Reply2 > TotalDp >
+ *  TotalMsrp > Discount > IsDiscountPercentage > IsHidden > ... derived fields.
+ *  Reply1/Reply2 are set on the parent item (matching GPC behaviour for license
+ *  items where the user ZEISS ID and name are recorded on the main line). */
 function insertLicenseItems(doc: Document, newItems: ConfigItem[], allItems: ConfigItem[] = []): void {
   if (newItems.length === 0) return
   const container = findOrCreateRootChild(doc, 'DependentListsData')
   for (const item of newItems) {
     const smaNo = `${item.no}.1`
     const smaItem = allItems.find(i => i.no === smaNo)
-    const smaUserZeissId = smaItem?.userZeissId ?? ''
-    const smaUserName = smaItem?.userName ?? ''
+    const userZeissId = smaItem?.userZeissId ?? item.userZeissId ?? ''
+    const userName = smaItem?.userName ?? item.userName ?? ''
 
     const rowXml = `<DependentListScreenData ${XSI}>` +
       buildConfigurationItemXml(item.name, 'Software License', 'DependentList', '') +
       `<UseInCalculation>true</UseInCalculation>` +
       `<No>${item.no}</No>` +
+      `<Reply1>${escapeXml(userZeissId)}</Reply1>` +
+      `<Reply2>${escapeXml(userName)}</Reply2>` +
       `<TotalDp ${NIL} />` +
       `<TotalMsrp ${NIL} />` +
       `<Discount ${NIL} />` +
@@ -339,8 +348,8 @@ function insertLicenseItems(doc: Document, newItems: ConfigItem[], allItems: Con
           buildConfigurationItemXml('SMA', 'SMA', 'DependentList', '') +
           `<UseInCalculation>true</UseInCalculation>` +
           `<No>${smaNo}</No>` +
-          `<Reply1>${escapeXml(smaUserZeissId)}</Reply1>` +
-          `<Reply2>${escapeXml(smaUserName)}</Reply2>` +
+          `<Reply1>${escapeXml(userZeissId)}</Reply1>` +
+          `<Reply2>${escapeXml(userName)}</Reply2>` +
           `<TotalDp ${NIL} />` +
           `<TotalMsrp ${NIL} />` +
           `<Discount ${NIL} />` +

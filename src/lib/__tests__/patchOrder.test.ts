@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { patchOrderXml } from '../patchOrder.js'
 import { parseOrder } from '../parseOrder.js'
-import type { OrderSummary } from '../../types/order.js'
+import { createBlankOrderXml } from '../createBlankOrder.js'
+import type { ConfigItem, OrderSummary } from '../../types/order.js'
 
 // ---------------------------------------------------------------------------
 // Fixture: order.xml with all patchable sections present
@@ -325,5 +326,274 @@ describe('patchOrderXml — preservation and errors', () => {
   it('patchOrderXml output is valid XML that parseOrder can consume', () => {
     const patched = patchOrderXml(ORDER_XML, BASE_ORDER)
     expect(() => parseOrder(patched)).not.toThrow()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Reference-based tests: verify XML structure matches GPC format
+// ---------------------------------------------------------------------------
+
+/** Helper: parse XML string and return child tag names of first matching element */
+function childTagNames(xml: string, parentTag: string): string[] {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  const el = doc.getElementsByTagName(parentTag)[0]
+  if (!el) return []
+  return Array.from(el.children).map(c => c.tagName)
+}
+
+/** Helper: get text of a tag inside another tag */
+function textInTag(xml: string, parentTag: string, childTag: string): string | null {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml')
+  const el = doc.getElementsByTagName(parentTag)[0]
+  if (!el) return null
+  for (const child of Array.from(el.children)) {
+    if (child.tagName === childTag) return child.textContent ?? ''
+  }
+  return null
+}
+
+describe('patchOrderXml — add license item matches GPC reference format', () => {
+  function blankOrderWithLicense(opts: { zeissId: string; userName: string; name?: string }) {
+    const blankXml = createBlankOrderXml()
+    const blankOrder = parseOrder(blankXml)
+
+    const licenseItem: ConfigItem = {
+      no: '1',
+      label: 'Configuration item 1',
+      category: 'Software License',
+      name: opts.name ?? 'ZEISS INSPECT Pro',
+      systemType: '',
+      totalMsrp: null,
+      totalDp: null,
+      discountOverride: null,
+      isHidden: false,
+      isSub: false,
+      itemType: 'dependent',
+      sections: [],
+      isNew: true,
+    }
+    const smaItem: ConfigItem = {
+      no: '1.1',
+      label: 'SMA',
+      category: 'SMA',
+      name: 'SMA',
+      systemType: '',
+      totalMsrp: null,
+      totalDp: null,
+      discountOverride: null,
+      isHidden: false,
+      isSub: true,
+      itemType: 'sub',
+      sections: [],
+      userZeissId: opts.zeissId,
+      userName: opts.userName,
+      isNew: true,
+    }
+
+    const order: OrderSummary = {
+      ...blankOrder,
+      items: [licenseItem, smaItem],
+    }
+    return patchOrderXml(blankXml, order)
+  }
+
+  it('DependentListScreenData has correct element order matching C# serialization', () => {
+    const xml = blankOrderWithLicense({ zeissId: 'test@trilion.com', userName: 'Test User' })
+    // Reference order from GPC: ConfigurationItem, UseInCalculation, No, Reply1, Reply2,
+    // TotalDp, TotalMsrp, Discount, IsDiscountPercentage, IsHidden, Sections, SubConfigurations
+    const tags = childTagNames(xml, 'DependentListScreenData')
+    expect(tags).toEqual([
+      'ConfigurationItem',
+      'UseInCalculation',
+      'No',
+      'Reply1',
+      'Reply2',
+      'TotalDp',
+      'TotalMsrp',
+      'Discount',
+      'IsDiscountPercentage',
+      'IsHidden',
+      'Sections',
+      'SubConfigurations',
+    ])
+  })
+
+  it('Reply1 and Reply2 are set on parent license item', () => {
+    const xml = blankOrderWithLicense({ zeissId: 'licensing@trilion.com', userName: 'Trilion Licensing' })
+    expect(textInTag(xml, 'DependentListScreenData', 'Reply1')).toBe('licensing@trilion.com')
+    expect(textInTag(xml, 'DependentListScreenData', 'Reply2')).toBe('Trilion Licensing')
+  })
+
+  it('SMA sub-item has Reply1 and Reply2 set', () => {
+    const xml = blankOrderWithLicense({ zeissId: 'licensing@trilion.com', userName: 'Trilion Licensing' })
+    const doc = new DOMParser().parseFromString(xml, 'application/xml')
+    const subConf = doc.getElementsByTagName('SubConfigurations')[0]
+    expect(subConf).toBeDefined()
+    const smaEl = subConf?.children[0]
+    expect(smaEl).toBeDefined()
+    const reply1 = Array.from(smaEl!.children).find(c => c.tagName === 'Reply1')
+    const reply2 = Array.from(smaEl!.children).find(c => c.tagName === 'Reply2')
+    expect(reply1?.textContent).toBe('licensing@trilion.com')
+    expect(reply2?.textContent).toBe('Trilion Licensing')
+  })
+
+  it('SMA sub-item element order matches C# serialization', () => {
+    const xml = blankOrderWithLicense({ zeissId: 'x@y.com', userName: 'X Y' })
+    const doc = new DOMParser().parseFromString(xml, 'application/xml')
+    const subConf = doc.getElementsByTagName('SubConfigurations')[0]
+    const smaEl = subConf?.children[0]
+    const tags = Array.from(smaEl!.children).map(c => c.tagName)
+    expect(tags).toEqual([
+      'ConfigurationItem',
+      'UseInCalculation',
+      'No',
+      'Reply1',
+      'Reply2',
+      'TotalDp',
+      'TotalMsrp',
+      'Discount',
+      'IsDiscountPercentage',
+      'IsHidden',
+      'Sections',
+      'SubConfigurations',
+    ])
+  })
+
+  it('ConfigurationItem block has correct element order', () => {
+    const xml = blankOrderWithLicense({ zeissId: '', userName: '' })
+    const tags = childTagNames(xml, 'ConfigurationItem')
+    expect(tags).toEqual([
+      'ApplicableFee',
+      'IsHidden',
+      'AsSubItemOnly',
+      'Flatten',
+      'UserBlacklist',
+      'RegionalRestrictionNotInTheseCountriesRegions',
+      'GroupLevel1',
+      'GroupLevel2',
+      'GroupLevel3',
+      'Name',
+      'Parameter',
+      'WorksheetArticleFilter',
+      'ItemType',
+      'AdditionalMandatoryFields',
+      'IsOppIdMandatory',
+      'Question1',
+      'Question2',
+      'Question3',
+      'Question1Formats',
+      'Question2Formats',
+      'Question3Formats',
+      'SapNr',
+      'SapItemCategory',
+      'ProductionArticles',
+      'Discounts',
+      'Unclean',
+    ])
+  })
+
+  it('round-trips through parseOrder correctly', () => {
+    const xml = blankOrderWithLicense({ zeissId: 'licensing@trilion.com', userName: 'Trilion Licensing' })
+    const parsed = parseOrder(xml)
+    expect(parsed.items.length).toBe(2)
+    const parent = parsed.items.find(i => i.no === '1')
+    const sma = parsed.items.find(i => i.no === '1.1')
+    expect(parent).toBeDefined()
+    expect(parent!.name).toBe('ZEISS INSPECT Pro')
+    expect(parent!.itemType).toBe('dependent')
+    expect(sma).toBeDefined()
+    expect(sma!.name).toBe('SMA')
+    expect(sma!.isSub).toBe(true)
+  })
+})
+
+describe('patchOrderXml — add free article item matches GPC reference format', () => {
+  it('FreeArticlesScreenData has correct element order with Reply fields', () => {
+    const blankXml = createBlankOrderXml()
+    const blankOrder = parseOrder(blankXml)
+
+    const freeItem: ConfigItem = {
+      no: '1',
+      label: 'Configuration item 1',
+      category: 'Accessories',
+      name: 'Training Day',
+      systemType: '',
+      totalMsrp: null,
+      totalDp: null,
+      discountOverride: null,
+      isHidden: false,
+      isSub: false,
+      itemType: 'free',
+      sections: [{
+        name: 'Training Day',
+        articles: [{ name: 'Training Day', amount: 2, unit: 'pcs', priceOnRequest: false, unitMsrp: 1000, unitDp: 750, sapNr: '000250-0001-001' }],
+        comments: '',
+      }],
+      isNew: true,
+    }
+
+    const order: OrderSummary = { ...blankOrder, items: [freeItem] }
+    const xml = patchOrderXml(blankXml, order)
+
+    const tags = childTagNames(xml, 'FreeArticlesScreenData')
+    expect(tags).toEqual([
+      'ConfigurationItem',
+      'UseInCalculation',
+      'No',
+      'Reply1',
+      'Reply2',
+      'Reply3',
+      'TotalDp',
+      'TotalMsrp',
+      'Discount',
+      'IsDiscountPercentage',
+      'IsHidden',
+      'FreeArticles',
+    ])
+  })
+
+  it('FreeArticle has correct structure', () => {
+    const blankXml = createBlankOrderXml()
+    const blankOrder = parseOrder(blankXml)
+
+    const freeItem: ConfigItem = {
+      no: '1',
+      label: '',
+      category: 'Services',
+      name: 'Training Day',
+      systemType: '',
+      totalMsrp: null,
+      totalDp: null,
+      discountOverride: null,
+      isHidden: false,
+      isSub: false,
+      itemType: 'free',
+      sections: [{
+        name: 'Training Day',
+        articles: [{ name: 'Training Day', amount: 3, unit: 'days', priceOnRequest: false, unitMsrp: null, unitDp: null, sapNr: '604001-0001-000' }],
+        comments: '',
+      }],
+      isNew: true,
+    }
+
+    const order: OrderSummary = { ...blankOrder, items: [freeItem] }
+    const xml = patchOrderXml(blankXml, order)
+    const doc = new DOMParser().parseFromString(xml, 'application/xml')
+
+    const freeArt = doc.getElementsByTagName('FreeArticle')[0]
+    expect(freeArt).toBeDefined()
+    const artTags = Array.from(freeArt!.children).map(c => c.tagName)
+    expect(artTags).toEqual([
+      'Amount', 'Step', 'Article',
+      'OverwrittenDp', 'OverwrittenMrsp', 'PriceOnRequest',
+      'EuroMsrp', 'Msrp', 'Dp', 'SumMsrp', 'SumDp', 'CustomQuantityDiscount',
+    ])
+
+    // Verify amount
+    expect(freeArt!.getElementsByTagName('Amount')[0]?.textContent).toBe('3')
+    // Verify article details
+    expect(freeArt!.querySelector('Article > LongName')?.textContent).toBe('Training Day')
+    expect(freeArt!.querySelector('Article > SapNr')?.textContent).toBe('604001-0001-000')
+    expect(freeArt!.querySelector('Article > Unit')?.textContent).toBe('days')
   })
 })
