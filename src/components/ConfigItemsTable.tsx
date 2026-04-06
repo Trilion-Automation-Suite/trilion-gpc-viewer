@@ -199,21 +199,17 @@ function SmaDetailPanel({
 }) {
   const pricedArticles = sma.softwareArticles.filter(a => a.msrp !== null && a.msrp !== 0)
 
-  // Collect unique dongle IDs from all sources
-  const dongles = Array.from(new Set([
-    ...sma.softwareArticles.map(a => a.dongleId).filter(Boolean),
-    ...sma.dependentLists.map(d => d.dongleId).filter(Boolean),
-  ])).sort()
-
-  // Contract dates from first available source
-  const dateSrc = sma.softwareArticles[0] ?? sma.dependentLists[0]
+  // Collect unique dongle IDs
+  const dongles = Array.from(new Set(
+    sma.softwareArticles.map(a => a.dongleId).filter(Boolean),
+  )).sort()
 
   return (
     <tr className="sma-detail-row">
       <td className="sma-detail-indent" />
       <td colSpan={colSpan - 1}>
         <div className="sma-panel">
-          {/* Header: user info + dongle + dates */}
+          {/* Header: user info + dongle */}
           <div className="sma-info-grid">
             {sma.email && (
               <div className="sma-info-item">
@@ -233,27 +229,9 @@ function SmaDetailPanel({
                 <span className="sma-info-value sma-mono">{dongles.join(', ')}</span>
               </div>
             )}
-            {dateSrc?.endOldContract && (
-              <div className="sma-info-item">
-                <span className="sma-info-label">Contract End</span>
-                <span className="sma-info-value">{fmtDate(dateSrc.endOldContract)}</span>
-              </div>
-            )}
-            {dateSrc?.startNewContract && (
-              <div className="sma-info-item">
-                <span className="sma-info-label">New Start</span>
-                <span className="sma-info-value">{fmtDate(dateSrc.startNewContract)}</span>
-              </div>
-            )}
-            {dateSrc?.endNewContract && (
-              <div className="sma-info-item">
-                <span className="sma-info-label">New End</span>
-                <span className="sma-info-value">{fmtDate(dateSrc.endNewContract)}</span>
-              </div>
-            )}
           </div>
 
-          {/* Software articles table */}
+          {/* Software articles table with per-row dates */}
           {pricedArticles.length > 0 && (
             <table className="sma-sub-table">
               <thead>
@@ -262,6 +240,9 @@ function SmaDetailPanel({
                   <th>Dongle</th>
                   <th className="right">List Price</th>
                   <th className="right">Distributor</th>
+                  <th>Contract End</th>
+                  <th>New Start</th>
+                  <th>New End</th>
                 </tr>
               </thead>
               <tbody>
@@ -271,34 +252,9 @@ function SmaDetailPanel({
                     <td className="sma-mono">{art.dongleId}</td>
                     <td className="right"><PriceCell value={art.msrp} dec={dec} /></td>
                     <td className="right"><PriceCell value={art.dp} dec={dec} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {/* Dependent list groups table */}
-          {sma.dependentLists.length > 0 && (
-            <table className="sma-sub-table">
-              <thead>
-                <tr>
-                  <th>SMA Group</th>
-                  <th>Dongle</th>
-                  <th className="right">List Price</th>
-                  <th className="right">Distributor</th>
-                  <th>New Start</th>
-                  <th>New End</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sma.dependentLists.map((dl, i) => (
-                  <tr key={i}>
-                    <td>{dl.name || '(unnamed)'}</td>
-                    <td className="sma-mono">{dl.dongleId}</td>
-                    <td className="right"><PriceCell value={dl.totalMsrp} dec={dec} /></td>
-                    <td className="right"><PriceCell value={dl.totalDp} dec={dec} /></td>
-                    <td>{fmtDate(dl.startNewContract)}</td>
-                    <td>{fmtDate(dl.endNewContract)}</td>
+                    <td>{fmtDate(art.endOldContract)}</td>
+                    <td>{fmtDate(art.startNewContract)}</td>
+                    <td>{fmtDate(art.endNewContract)}</td>
                   </tr>
                 ))}
               </tbody>
