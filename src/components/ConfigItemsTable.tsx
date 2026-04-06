@@ -353,8 +353,8 @@ function ItemRow({
 }
 
 export function ConfigItemsTable({ order, expanded, onToggle, isEditing, onDelete, onLicenseUserChange }: ConfigItemsTableProps) {
-  const topLevelVisible = order.items.filter((i) => !i.isSub && !i.isHidden)
-  const totals = topLevelVisible.reduce(
+  const visibleItems = order.items.filter((i) => !i.isHidden)
+  const totals = visibleItems.reduce(
     (acc, item) => ({
       msrp: acc.msrp + (item.totalMsrp ?? 0),
       dp: acc.dp + (item.totalDp ?? 0),

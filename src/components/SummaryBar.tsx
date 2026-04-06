@@ -7,12 +7,10 @@ interface SummaryBarProps {
 }
 
 export function SummaryBar({ order }: SummaryBarProps) {
-  const topLevelItems = order.items.filter((item) => !item.isSub)
-
-  const listPrice = topLevelItems.reduce<number>(
+  const listPrice = order.items.reduce<number>(
     (acc, item) => acc + (item.totalMsrp ?? 0), 0
   )
-  const distributorPrice = topLevelItems.reduce<number>(
+  const distributorPrice = order.items.reduce<number>(
     (acc, item) => acc + (item.totalDp ?? 0), 0
   )
 
