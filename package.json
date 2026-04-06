@@ -15,13 +15,13 @@
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react-dom": "^19.2.4",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/react": "^18.3.1",
-    "@types/react-dom": "^18.3.1",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.1",
     "@vitest/coverage-v8": "^2.0.5",
     "@vitest/ui": "^2.0.5",
