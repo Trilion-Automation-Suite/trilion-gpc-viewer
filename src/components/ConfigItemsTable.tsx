@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import type { OrderSummary, ConfigItem, SectionDetail } from '../types/order.ts'
+import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails } from '../types/order.ts'
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import './ConfigItemsTable.css'
 
@@ -183,6 +183,133 @@ function UserFieldsRow({
   )
 }
 
+function fmtDate(iso: string): string {
+  if (!iso) return ''
+  return iso.slice(0, 10)
+}
+
+function SmaDetailPanel({
+  sma,
+  dec,
+  colSpan,
+}: {
+  sma: SmaDetails
+  dec: number
+  colSpan: number
+}) {
+  const pricedArticles = sma.softwareArticles.filter(a => a.msrp !== null && a.msrp !== 0)
+
+  // Collect unique dongle IDs from all sources
+  const dongles = Array.from(new Set([
+    ...sma.softwareArticles.map(a => a.dongleId).filter(Boolean),
+    ...sma.dependentLists.map(d => d.dongleId).filter(Boolean),
+  ])).sort()
+
+  // Contract dates from first available source
+  const dateSrc = sma.softwareArticles[0] ?? sma.dependentLists[0]
+
+  return (
+    <tr className="sma-detail-row">
+      <td className="sma-detail-indent" />
+      <td colSpan={colSpan - 1}>
+        <div className="sma-panel">
+          {/* Header: user info + dongle + dates */}
+          <div className="sma-info-grid">
+            {sma.email && (
+              <div className="sma-info-item">
+                <span className="sma-info-label">ZEISS ID / Email</span>
+                <span className="sma-info-value">{sma.email}</span>
+              </div>
+            )}
+            {sma.userName && (
+              <div className="sma-info-item">
+                <span className="sma-info-label">License User</span>
+                <span className="sma-info-value">{sma.userName}</span>
+              </div>
+            )}
+            {dongles.length > 0 && (
+              <div className="sma-info-item">
+                <span className="sma-info-label">Dongle S/N</span>
+                <span className="sma-info-value sma-mono">{dongles.join(', ')}</span>
+              </div>
+            )}
+            {dateSrc?.endOldContract && (
+              <div className="sma-info-item">
+                <span className="sma-info-label">Contract End</span>
+                <span className="sma-info-value">{fmtDate(dateSrc.endOldContract)}</span>
+              </div>
+            )}
+            {dateSrc?.startNewContract && (
+              <div className="sma-info-item">
+                <span className="sma-info-label">New Start</span>
+                <span className="sma-info-value">{fmtDate(dateSrc.startNewContract)}</span>
+              </div>
+            )}
+            {dateSrc?.endNewContract && (
+              <div className="sma-info-item">
+                <span className="sma-info-label">New End</span>
+                <span className="sma-info-value">{fmtDate(dateSrc.endNewContract)}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Software articles table */}
+          {pricedArticles.length > 0 && (
+            <table className="sma-sub-table">
+              <thead>
+                <tr>
+                  <th>Software Article</th>
+                  <th>Dongle</th>
+                  <th className="right">List Price</th>
+                  <th className="right">Distributor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pricedArticles.map((art, i) => (
+                  <tr key={i}>
+                    <td>{art.name}</td>
+                    <td className="sma-mono">{art.dongleId}</td>
+                    <td className="right"><PriceCell value={art.msrp} dec={dec} /></td>
+                    <td className="right"><PriceCell value={art.dp} dec={dec} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Dependent list groups table */}
+          {sma.dependentLists.length > 0 && (
+            <table className="sma-sub-table">
+              <thead>
+                <tr>
+                  <th>SMA Group</th>
+                  <th>Dongle</th>
+                  <th className="right">List Price</th>
+                  <th className="right">Distributor</th>
+                  <th>New Start</th>
+                  <th>New End</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sma.dependentLists.map((dl, i) => (
+                  <tr key={i}>
+                    <td>{dl.name || '(unnamed)'}</td>
+                    <td className="sma-mono">{dl.dongleId}</td>
+                    <td className="right"><PriceCell value={dl.totalMsrp} dec={dec} /></td>
+                    <td className="right"><PriceCell value={dl.totalDp} dec={dec} /></td>
+                    <td>{fmtDate(dl.startNewContract)}</td>
+                    <td>{fmtDate(dl.endNewContract)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 function ItemRow({
   item,
   expanded,
@@ -209,7 +336,11 @@ function ItemRow({
     .filter(Boolean)
     .join(' ')
 
-  const hasDetail = item.sections.length > 0 || item.userZeissId !== undefined || item.userName !== undefined
+  const hasSma = item.sma !== undefined && (
+    item.sma.email || item.sma.userName ||
+    item.sma.softwareArticles.length > 0 || item.sma.dependentLists.length > 0
+  )
+  const hasDetail = item.sections.length > 0 || item.userZeissId !== undefined || item.userName !== undefined || hasSma
   const colSpan = 8  // 7 data cols + 1 delete col
 
   return (
@@ -230,6 +361,7 @@ function ItemRow({
           <span className="item-name">
             {item.name || item.label}
             {item.isHidden && <em className="hidden-badge">hidden</em>}
+            {hasSma && <em className="sma-badge">SMA</em>}
           </span>
         </td>
         <td className="item-system-type" title={item.systemType}>
@@ -256,6 +388,7 @@ function ItemRow({
           {(item.userZeissId !== undefined || item.userName !== undefined) && (
             <UserFieldsRow item={item} isEditing={isEditing} onLicenseUserChange={onLicenseUserChange} colSpan={colSpan} />
           )}
+          {hasSma && <SmaDetailPanel sma={item.sma!} dec={dec} colSpan={colSpan} />}
           {item.sections.length > 0 && <SectionRows sections={item.sections} dec={dec} colSpan={colSpan} />}
         </>
       )}

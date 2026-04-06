@@ -381,3 +381,113 @@
 .user-field-input:focus {
   border-color: var(--accent);
 }
+
+/* ── SMA badge ── */
+.sma-badge {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── SMA detail row ── */
+.sma-detail-row td {
+  padding: 0 !important;
+  background: var(--bg-card-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.sma-detail-indent {
+  width: 4px !important;
+  padding: 0 !important;
+  background: var(--accent) !important;
+  opacity: 0.4;
+}
+
+.sma-panel {
+  padding: 10px 14px 12px;
+}
+
+/* Info grid: key-value pairs in a responsive grid */
+.sma-info-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin-bottom: 8px;
+}
+
+.sma-info-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 100px;
+}
+
+.sma-info-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 1px;
+}
+
+.sma-info-value {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+}
+
+.sma-mono {
+  font-family: monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+}
+
+/* SMA sub-tables */
+.sma-sub-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 0.78rem;
+}
+
+.sma-sub-table thead th {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  position: static;
+}
+
+.sma-sub-table thead th.right {
+  text-align: right;
+}
+
+.sma-sub-table tbody td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  vertical-align: middle;
+}
+
+.sma-sub-table tbody td.right {
+  text-align: right;
+}
+
+.sma-sub-table tbody tr:last-child td {
+  border-bottom: none;
+}

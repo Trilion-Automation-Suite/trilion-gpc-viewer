@@ -1,4 +1,4 @@
-import type { AccountDetails, ArticleRow, ConfigItem, OrderAdministration, OrderSummary, SectionDetail, TechnicalContact } from '../types/order.js'
+import type { AccountDetails, ArticleRow, ConfigItem, OrderAdministration, OrderSummary, SectionDetail, SmaDetails, SmaSoftwareArticle, SmaDependentList, TechnicalContact } from '../types/order.js'
 import { parseItemNo } from './pricing.js'
 
 // ---------------------------------------------------------------------------
@@ -116,6 +116,72 @@ function extractSystemType(itemEl: Element): string {
 }
 
 // ---------------------------------------------------------------------------
+// SMA (Software Maintenance Agreement) parsing
+// ---------------------------------------------------------------------------
+
+function isSmaItem(el: Element): boolean {
+  const ciEl = directChild(el, 'ConfigurationItem')
+  if (ciEl) {
+    const itemType = childText(ciEl, 'ItemType')
+    if (itemType === 'Supportextension') return true
+    const name = childText(ciEl, 'Name')
+    if (name && name.toLowerCase().includes('sma')) return true
+  }
+  if (directChild(el, 'SoftwareSupportArticles')) return true
+  return false
+}
+
+function parseSmaDetails(el: Element): SmaDetails {
+  const sma: SmaDetails = {
+    email: childText(el, 'Reply1'),
+    userName: childText(el, 'Reply2'),
+    softwareArticles: [],
+    dependentLists: [],
+  }
+
+  // SoftwareSupportArticles
+  const ssaEl = directChild(el, 'SoftwareSupportArticles')
+  if (ssaEl) {
+    for (const artEl of Array.from(ssaEl.children)) {
+      const articleEl = directChild(artEl, 'Article')
+      const name = articleEl
+        ? (childText(articleEl, 'LongName') || childText(articleEl, 'ShortName'))
+        : ''
+      const art: SmaSoftwareArticle = {
+        name,
+        dongleId: childText(artEl, 'SensorSnDongleId'),
+        startNewContract: childText(artEl, 'StartNewContract'),
+        endNewContract: childText(artEl, 'EndNewContract'),
+        endOldContract: childText(artEl, 'EndOldContract'),
+        msrp: childFloat(artEl, 'Msrp'),
+        dp: childFloat(artEl, 'Dp'),
+      }
+      sma.softwareArticles.push(art)
+    }
+  }
+
+  // DependentListSupportScreenDatas
+  const dlEl = directChild(el, 'DependentListSupportScreenDatas')
+  if (dlEl) {
+    for (const d of Array.from(dlEl.children)) {
+      const ciEl = directChild(d, 'ConfigurationItem')
+      const dl: SmaDependentList = {
+        name: ciEl ? childText(ciEl, 'Name') : '',
+        dongleId: childText(d, 'DongleId'),
+        startNewContract: childText(d, 'StartNewContract'),
+        endNewContract: childText(d, 'EndNewContract'),
+        endOldContract: childText(d, 'EndOldContract'),
+        totalMsrp: childFloat(d, 'TotalMsrp'),
+        totalDp: childFloat(d, 'TotalDp'),
+      }
+      sma.dependentLists.push(dl)
+    }
+  }
+
+  return sma
+}
+
+// ---------------------------------------------------------------------------
 // Item parsers
 // ---------------------------------------------------------------------------
 
@@ -140,6 +206,9 @@ function parseDependentItem(el: Element, itemType: 'dependent' | 'sub'): ConfigI
   }
   if (userZeissId !== undefined) item.userZeissId = userZeissId
   if (userName !== undefined) item.userName = userName
+  if (isSmaItem(el)) {
+    item.sma = parseSmaDetails(el)
+  }
   return item
 }
 
@@ -238,6 +307,8 @@ function parseSimpleItems(
       itemType === 'freeList' ? parseFreeListSections(el) :
       itemType === 'free'     ? parseFreeArticleSections(el) :
       []
+    const userZeissId = childText(el, 'Reply1') || undefined
+    const userName = childText(el, 'Reply2') || undefined
     const item: ConfigItem = {
       no,
       label: no ? `Configuration item ${no}` : '',
@@ -251,6 +322,11 @@ function parseSimpleItems(
       isSub: no.includes('.'),
       itemType,
       sections,
+    }
+    if (userZeissId !== undefined) item.userZeissId = userZeissId
+    if (userName !== undefined) item.userName = userName
+    if (isSmaItem(el)) {
+      item.sma = parseSmaDetails(el)
     }
     return [item, ...collectSubItems(el)]
   }))

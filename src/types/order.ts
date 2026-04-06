@@ -138,6 +138,33 @@ export interface SectionDetail {
   comments: string
 }
 
+export interface SmaSoftwareArticle {
+  name: string
+  dongleId: string
+  startNewContract: string       // ISO date
+  endNewContract: string         // ISO date
+  endOldContract: string         // ISO date
+  msrp: number | null
+  dp: number | null
+}
+
+export interface SmaDependentList {
+  name: string
+  dongleId: string
+  startNewContract: string
+  endNewContract: string
+  endOldContract: string
+  totalMsrp: number | null
+  totalDp: number | null
+}
+
+export interface SmaDetails {
+  email: string                  // Reply1 — ZEISS ID / email
+  userName: string               // Reply2 — license user name
+  softwareArticles: SmaSoftwareArticle[]
+  dependentLists: SmaDependentList[]
+}
+
 export interface ConfigItem {
   no: string               // "1", "1.1", "2.3" etc.
   label: string            // "Configuration item 1"
@@ -154,6 +181,7 @@ export interface ConfigItem {
   userZeissId?: string     // license user ZEISS ID / email
   userName?: string        // license user name
   isNew?: boolean          // true for items created in this session (not from XML)
+  sma?: SmaDetails         // SMA contract/dongle/article details (when applicable)
 }
 
 export interface ParseResult {
