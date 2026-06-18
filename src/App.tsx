@@ -5,7 +5,7 @@ import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, Par
 import { loadGpcFile, createNewOrder } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
 import { loadPdbCache } from './lib/pdbCache.ts'
-import { saveGpcFile } from './lib/saveGpcFile.ts'
+import { saveGpcFile, saveGpcFileAs } from './lib/saveGpcFile.ts'
 import { FilePicker } from './components/FilePicker.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
 import { ErrorBanner } from './components/ErrorBanner.tsx'
@@ -280,14 +280,16 @@ export function App() {
     if (state.status !== 'loaded' || !order) return
     setIsSaving(true)
     try {
-      await saveGpcFile(
+      const newHandle = await saveGpcFileAs(
         state.result.rawDecryptedBuffer,
         state.result.rawOrderXml,
         order,
         state.result.sourceFile,
-        undefined,  // no fileHandle → always triggers download / Save As picker
         state.result.originalItemNos
       )
+      if (newHandle) {
+        setFileHandle(newHandle)
+      }
       setIsDirty(false)
     } catch (err) {
       alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`)
