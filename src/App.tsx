@@ -15,6 +15,7 @@ import { AccountTab } from './components/AccountTab.tsx'
 import { ContactTab } from './components/ContactTab.tsx'
 import { AdminTab } from './components/AdminTab.tsx'
 import { CommentsTab } from './components/CommentsTab.tsx'
+import { EucTab } from './components/EucTab.tsx'
 import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
@@ -24,13 +25,14 @@ function nextItemNo(items: ConfigItem[]): string {
   return String(topLevel.length > 0 ? Math.max(...topLevel) + 1 : 1)
 }
 
-type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments'
+type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc'
 const TAB_LABELS: Record<Tab, string> = {
   items: 'Items',
   account: 'Account Details',
   contact: 'Technical Contact',
   admin: 'Administration Information',
   comments: 'Comments',
+  euc: 'EUC Check',
 }
 
 type AppState =
@@ -582,6 +584,12 @@ export function App() {
                   comments={order.comments}
                   isEditing={isEditing}
                   onChange={(v) => { setOrder((prev) => prev ? { ...prev, comments: v } : null); setIsDirty(true) }}
+                />
+              )}
+              {tab === 'euc' && (
+                <EucTab
+                  order={order}
+                  currencyRates={state.status === 'loaded' ? state.result.currencyRates : {}}
                 />
               )}
             </div>
