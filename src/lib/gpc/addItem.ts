@@ -128,8 +128,15 @@ export function priceArticle(
   const dpEur = parseDecimalOrNull(field(row, 'Dp')) ?? fromInt(0)
 
   const msrp = applyRounding(rules, multiply(msrpEur, exchangeRate), 'MSRP', currencyIso, mpg)
-  const ratio = isZero(msrpEur) ? fromInt(0) : divide(dpEur, msrpEur)
-  const dp = applyRounding(rules, multiply(msrp, ratio), 'DP', currencyIso, mpg)
+
+  // Normally the distributor price follows the rounded list price times the
+  // price list's discount ratio. A promotional article can have a list price of
+  // zero and a real distributor price, and there the ratio does not exist — the
+  // euro figure is converted directly instead.
+  const dpRaw = isZero(msrpEur)
+    ? multiply(dpEur, exchangeRate)
+    : multiply(msrp, divide(dpEur, msrpEur))
+  const dp = applyRounding(rules, dpRaw, 'DP', currencyIso, mpg)
   return { dp, msrp }
 }
 
@@ -147,6 +154,14 @@ export function decimalString(value: Dec | number, decimals = 0): string {
 // ── the add-item path ─────────────────────────────────────────────────────────
 
 export interface AddArticleOptions {
+  /** Free-text note the configurator shows on the line. */
+  reply1?: string
+  /**
+   * Whether the line counts toward the order totals. The operator can switch a
+   * line out of the calculation while leaving it in the order, so this is not
+   * always true — reference orders carry both.
+   */
+  useInCalculation?: boolean
   /** Defaults to the order's own `PriceList`. */
   priceListName?: string
   /** Defaults to the order's own `Currency/ExchangeRate`. */
@@ -154,19 +169,34 @@ export interface AddArticleOptions {
   amount?: number
 }
 
-/**
- * Adds an article to the order the way GPC does: clone the catalog item, clone
- * the article, nest the article inside the item. Returns the same document.
- */
+/** Adds one article as its own free-list line. */
 export function addArticle(
   order: OrderDocument,
   pdb: GpcContainer,
   articleName: string,
   options: AddArticleOptions = {}
 ): OrderDocument {
+  return addFreeListLine(order, pdb, [articleName], options)
+}
+
+/**
+ * Adds a free-list line the way GPC does: clone the catalog configuration item
+ * and nest the articles inside it.
+ *
+ * A line holds any number of articles — grouping is the operator's doing, not
+ * one line per article. Reference orders carry both shapes, including two
+ * separate lines that share the same configuration item.
+ */
+export function addFreeListLine(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  articleNames: string[],
+  options: AddArticleOptions & { amounts?: number[] } = {}
+): OrderDocument {
+  if (!articleNames.length) return order
   const config = readPdbConfig(pdb)
-  const article = findArticle(config, articleName)
-  const item = findFreeListItem(config, article)
+  const articles = articleNames.map((n) => findArticle(config, n))
+  const item = findFreeListItem(config, articles[0])
 
   const priceListName = options.priceListName ?? orderField(order, 'PriceList')
   if (!priceListName) throw new Error('addItem: order has no PriceList')
@@ -174,36 +204,44 @@ export function addArticle(
   const amount = options.amount ?? 1
 
   const rules = scanRoundingRules(pdbConfigXml(pdb))
-  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, orderCurrencyIso(order))
-  const count = fromInt(amount)
-  const totalDp = multiply(dp, count)
-  const totalMsrp = multiply(msrp, count)
+  const iso = orderCurrencyIso(order)
+
+  let totalDp: Dec = fromInt(0)
+  let totalMsrp: Dec = fromInt(0)
+  const lines: Array<[string, OrderValue]> = []
+  articles.forEach((article, i) => {
+    const each = options.amounts?.[i] ?? amount
+    const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, iso)
+    const count = fromInt(each)
+    totalDp = add(totalDp, multiply(dp, count))
+    totalMsrp = add(totalMsrp, multiply(msrp, count))
+    lines.push(['FreeListArticle', el([
+      ['Amount', txt(String(each))],
+      ['Step', txt('1')],
+      ['Article', clone(article)],
+      ['OverwrittenDp', nil()],
+      ['OverwrittenMrsp', nil()],
+      ['PriceOnRequest', txt('false')],
+      ['EuroMsrp', nil()],
+      ['Msrp', txt(decimalString(msrp))],
+      ['Dp', txt(decimalString(dp))],
+      ['SumMsrp', nil()],
+      ['SumDp', nil()],
+      ['CustomQuantityDiscount', nil()],
+    ])])
+  })
 
   const screen = el([
     ['ConfigurationItem', clone(item)],
-    ['UseInCalculation', txt('true')],
+    ['UseInCalculation', txt(String(options.useInCalculation ?? true))],
     ['No', txt(String(nextItemNumber(order)))],
+    ...(options.reply1 ? [['Reply1', txt(options.reply1)] as [string, OrderValue]] : []),
     ['TotalDp', txt(decimalString(totalDp))],
     ['TotalMsrp', txt(decimalString(totalMsrp))],
     ['Discount', nil()],
     ['IsDiscountPercentage', txt('false')],
     ['IsHidden', txt('false')],
-    ['FreeListArticles', el([
-      ['FreeListArticle', el([
-        ['Amount', txt(String(amount))],
-        ['Step', txt('1')],
-        ['Article', clone(article)],
-        ['OverwrittenDp', nil()],
-        ['OverwrittenMrsp', nil()],
-        ['PriceOnRequest', txt('false')],
-        ['EuroMsrp', nil()],
-        ['Msrp', txt(decimalString(msrp))],
-        ['Dp', txt(decimalString(dp))],
-        ['SumMsrp', nil()],
-        ['SumDp', nil()],
-        ['CustomQuantityDiscount', nil()],
-      ])],
-    ])],
+    ['FreeListArticles', el(lines)],
   ])
 
   appendTo(order.root, 'FreeListArticlesData', 'FreeListScreenData', screen)
@@ -427,7 +465,7 @@ export function addFreeArticle(
 
   const screen = el([
     ['ConfigurationItem', clone(item)],
-    ['UseInCalculation', txt('true')],
+    ['UseInCalculation', txt(String(options.useInCalculation ?? true))],
     ['No', txt(String(nextItemNumber(order)))],
     ['TotalDp', txt(decimalString(multiply(dp, count)))],
     ['TotalMsrp', txt(decimalString(multiply(msrp, count)))],
@@ -573,7 +611,11 @@ export function addSupportArticle(
 }
 
 /** The order's support screen, cloned from the catalog on first use. */
-function supportScreen(order: OrderDocument, config: ElementValue, options: SupportContract): ElementValue {
+function supportScreen(
+  order: OrderDocument,
+  config: ElementValue,
+  options: SupportContract & { useInCalculation?: boolean }
+): ElementValue {
   const list = order.root.members.find((m) => m.name === 'SupportArticlesData')?.value
   if (!list || list.kind !== 'element') throw new Error('addItem: order has no <SupportArticlesData>')
 
@@ -582,7 +624,7 @@ function supportScreen(order: OrderDocument, config: ElementValue, options: Supp
 
   const screen = el([
     ['ConfigurationItem', clone(findSupportItem(config))],
-    ['UseInCalculation', txt('true')],
+    ['UseInCalculation', txt(String(options.useInCalculation ?? true))],
     ['No', txt(String(nextItemNumber(order)))],
     ...(options.replyEmail ? [['Reply1', txt(options.replyEmail)] as [string, OrderValue]] : []),
     ...(options.replyName ? [['Reply2', txt(options.replyName)] as [string, OrderValue]] : []),

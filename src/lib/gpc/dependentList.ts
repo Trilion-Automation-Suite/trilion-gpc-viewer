@@ -60,7 +60,13 @@ function section(config: ElementValue, name: string): ElementValue {
  * How an option's amount came about. Recorded rather than derived: only
  * `None` follows from the amount alone.
  */
-export type AmountMode = 'None' | 'Default' | 'UserChoice' | 'SectionSpecialFunction'
+export type AmountMode =
+  | 'None'
+  | 'Default'
+  | 'UserChoice'
+  | 'SectionSpecialFunction'
+  | 'Implication'
+  | 'SoftImplication'
 
 /** One option the operator turned on, identified the way the file identifies it. */
 export interface DependentListSelection {
@@ -68,9 +74,17 @@ export interface DependentListSelection {
   articleName: string
   amount: string
   amountMode?: AmountMode
+  /**
+   * The configurator writes 0 here for an option the current user cannot take.
+   * Partly explained by the article's UserBlacklist, but not wholly, so it is
+   * carried rather than derived.
+   */
+  step?: string
 }
 
 export interface AddDependentListOptions {
+  /** Whether the line counts toward the order totals; operators can switch it off. */
+  useInCalculation?: boolean
   /** Free-text reply shown on the line. */
   reply1?: string
   selections?: DependentListSelection[]
@@ -142,23 +156,25 @@ export function addDependentList(
       // of the option, so replaying a configuration takes the amounts as given.
       const amount = selection?.amount ?? '0'
 
-      // Only options that are actually on carry a price into the total.
-      const { msrp, dp } = optionPrice(config, articleName, priceListName, exchangeRate, rules, currencyIso)
-      if (amount !== '0') {
+      // An option with no catalog article has no price at all, which is not the
+      // same as a price of zero: the configurator writes xsi:nil for the first
+      // and 0 for the second, and selector rows are genuinely zero-priced.
+      const priced = optionPrice(config, articleName, priceListName, exchangeRate, rules, currencyIso)
+      if (priced && amount !== '0') {
         const count = fromInt(Number(amount) || 0)
-        totalMsrp = add(totalMsrp, multiply(msrp, count))
-        totalDp = add(totalDp, multiply(dp, count))
+        totalMsrp = add(totalMsrp, multiply(priced.msrp, count))
+        totalDp = add(totalDp, multiply(priced.dp, count))
       }
 
       entries.push(['SectionArticleScreenData', el([
         ['Amount', txt(amount)],
-        ['Step', txt(field(catalogArticle, 'Step') ?? '0')],
+        ['Step', txt(selection?.step ?? field(catalogArticle, 'Step') ?? '0')],
         ['OverwrittenDp', nil()],
         ['OverwrittenMrsp', nil()],
         ['PriceOnRequest', txt('false')],
         ['EuroMsrp', nil()],
-        ['Msrp', txt(decimalString(msrp))],
-        ['Dp', txt(decimalString(dp))],
+        ['Msrp', priced ? txt(decimalString(priced.msrp)) : nil()],
+        ['Dp', priced ? txt(decimalString(priced.dp)) : nil()],
         ['SumMsrp', nil()],
         ['SumDp', nil()],
         ['CustomQuantityDiscount', nil()],
@@ -177,7 +193,7 @@ export function addDependentList(
 
   const screen = el([
     ['ConfigurationItem', clone(item)],
-    ['UseInCalculation', txt('true')],
+    ['UseInCalculation', txt(String(options.useInCalculation ?? true))],
     ['No', txt(String(nextItemNumber(order)))],
     ...(options.reply1 ? [['Reply1', txt(options.reply1)] as [string, OrderValue]] : []),
     // A plain sum, unlike a support screen: these totals are written at scale 0.
@@ -203,12 +219,12 @@ export function addDependentList(
  * selection when given and inferred from the catalog default otherwise.
  */
 function amountMode(amount: string, defaultAmount: string, selection?: DependentListSelection): AmountMode {
-  if (amount === '0') return 'None'
   if (selection?.amountMode) return selection.amountMode
+  if (amount === '0') return 'None'
   return defaultAmount !== '0' ? 'Default' : 'UserChoice'
 }
 
-/** Options priced from the article catalog; a selector row has no article and costs nothing. */
+/** The option's price, or null when it names no catalog article. */
 function optionPrice(
   config: ElementValue,
   articleName: string,
@@ -216,11 +232,11 @@ function optionPrice(
   exchangeRate: Dec,
   rules: ReturnType<typeof scanRoundingRules>,
   currencyIso: string
-): { msrp: Dec; dp: Dec } {
+): { msrp: Dec; dp: Dec } | null {
   try {
     return priceArticle(findArticle(config, articleName), priceListName, exchangeRate, rules, currencyIso)
   } catch {
-    return { msrp: fromInt(0), dp: fromInt(0) }
+    return null
   }
 }
 
