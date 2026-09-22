@@ -37,7 +37,9 @@ interface Sections {
 }
 
 function norm(s: string): string {
-  return (s || '').replace(/ /g, ' ').replace(/[ \t]+/g, ' ')
+  // \u00a0 written as an escape, not the literal character: a bare NBSP in a
+  // regex is invisible in review and trips no-irregular-whitespace.
+  return (s || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ')
 }
 
 export function sliceSections(text: string, anchors: SectionAnchor[]): { sections: Sections; found: string[] } {

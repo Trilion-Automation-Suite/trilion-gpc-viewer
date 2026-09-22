@@ -436,3 +436,15 @@
   font-size: 0.78rem;
   color: var(--color-muted, #888);
 }
+
+/* Catalog the open order was built on, beside the filename in the header. */
+.pdb-badge {
+  margin-left: .5rem;
+  padding: .1rem .45rem;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 999px;
+  font-size: .7rem;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  opacity: .85;
+}
