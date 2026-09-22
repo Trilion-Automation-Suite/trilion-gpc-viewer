@@ -191,3 +191,70 @@ describe('saving an edited order keeps it deserializable', () => {
     expect(ROOT(patched)).not.toContain('CaseId')
   })
 })
+
+/**
+ * Opening a file and saving it without edits must return the same bytes.
+ *
+ * This is the property that would have caught the save-path faults early. Each
+ * of them — an invented element, one appended out of declaration order, a
+ * dropped declaration, flattened line endings — shows up as a round trip that
+ * is not a no-op, long before anyone notices GPC refusing the file.
+ */
+describe('open then save, with no edits, changes nothing', () => {
+  const ORDER = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<OrderData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+    '  <DependentListsData />',
+    '  <FreeArticlesData />',
+    '  <FreeListArticlesData />',
+    '  <SupportArticlesData />',
+    '  <AccountDetailsData>',
+    '    <IsDistributor>false</IsDistributor>',
+    '    <IsNewCustomer>false</IsNewCustomer>',
+    '  </AccountDetailsData>',
+    '  <CleanOrder>false</CleanOrder>',
+    // CRLF inside the value, as the configurator writes it.
+    "  <ReasonUnclean>* Not standard freight term ''.\r\n* Not standard payment term ''.\r\n</ReasonUnclean>",
+    '  <OrderAdministration>',
+    '    <InvoiceAddressType xsi:nil="true" />',
+    '    <InvoiceNewCustomer>false</InvoiceNewCustomer>',
+    // Booleans are value types: .NET always writes them, so a round trip that
+    // dropped one would not be a no-op.
+    '    <ShippingNewCustomer>false</ShippingNewCustomer>',
+    // A bare LF inside a value, which several reference files carry.
+    '    <SpecialShippingInstructions>first line\nsecond line</SpecialShippingInstructions>',
+    '  </OrderAdministration>',
+    '  <OrderStatus>Editing</OrderStatus>',
+    '  <PriceList>Partner</PriceList>',
+    '</OrderData>',
+  ].join('\r\n')
+
+  it('is byte-for-byte unchanged', async () => {
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+    expect(patchOrderXml(ORDER, parseOrder(ORDER), [])).toBe(ORDER)
+  })
+
+  it('keeps CRLF between lines and a bare LF inside a value', async () => {
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+    const out = patchOrderXml(ORDER, parseOrder(ORDER), [])
+
+    // An XML parser normalizes CRLF to LF everywhere, so a naive round trip
+    // cannot tell a line ending from a newline belonging to a value.
+    expect(out).toContain("* Not standard freight term ''.\r\n* Not standard payment term ''.")
+    expect(out).toContain('first line\nsecond line')
+  })
+
+  it('adds no empty elements for fields the file does not carry', async () => {
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+    const out = patchOrderXml(ORDER, parseOrder(ORDER), [])
+
+    // .NET omits a null reference type; inventing empty elements for every
+    // unset address field both bloated the file and broke member order.
+    for (const absent of ['CompanyName', 'FirstName', 'InvoiceCity', 'ShippingStreet', 'IsGomPartner']) {
+      expect(out, `${absent} should stay absent`).not.toContain(`<${absent}`)
+    }
+  })
+})

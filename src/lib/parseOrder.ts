@@ -382,7 +382,9 @@ function parseAccountDetails(doc: Document): AccountDetails {
     vatId: t('VatId'),
     customerIdAtGom: t('CustomerIdAtGom'),
     reference: t('Reference'),
-    isGomPartner: b('IsGomPartner'),
+    // Not a field of the format; recovered from the account number, which the
+    // GOM-partner toggle is what sets.
+    isGomPartner: b('IsGomPartner') || t('AccountNumber') !== '',
     isDistributor: b('IsDistributor'),
     isNewCustomer: b('IsNewCustomer'),
   }

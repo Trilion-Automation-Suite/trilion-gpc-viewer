@@ -30,6 +30,18 @@ import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, Tec
  * Appending it instead, which is what this module used to do, produced exactly
  * that failure.
  */
+/**
+ * Member order for the nested classes, from the same 2.9.8 declarations, and
+ * confirmed against the artifacts: every reference file's AccountDetailsData,
+ * LocalTechnicalContact and OrderAdministration list their members in exactly
+ * this relative order.
+ */
+const NESTED_MEMBERS: Record<string, string[]> = {
+  AccountDetailsData: ['AccountNumber', 'VatId', 'City', 'CompanyName', 'CompanyNameTwo', 'CompanyType', 'Country', 'CustomerIdAtGom', 'Department', 'DepartmentTwo', 'Email', 'HpcPoBox', 'IsDistributor', 'IsNewCustomer', 'Phone', 'PhoneCountryCode', 'PhonePrefix', 'Reference', 'StateProvince', 'Street', 'StreetTwo', 'StreetThree', 'Website', 'ZipPostalCode'],
+  LocalTechnicalContact: ['AcademicDegree', 'AdditionalEmail', 'AdditionalPhone', 'AdditionalPhoneCountryCode', 'AdditionalPhonePrefix', 'BusinessPhone', 'BusinessPhoneCountryCode', 'BusinessPhonePrefix', 'Department', 'Email', 'FirstName', 'Gender', 'IsOtherDepartment', 'IsOtherPosition', 'IsOtherSource', 'LastName', 'MobilePhone', 'MobilePhoneCountryCode', 'MobilePhonePrefix', 'Position', 'Source', 'Title'],
+  OrderAdministration: ['InvoiceAccountNumber', 'InvoiceAddressType', 'InvoiceCity', 'InvoiceCompanyName', 'InvoiceCompanyNameTwo', 'InvoiceCountry', 'InvoiceDepartment', 'InvoiceDepartmentTwo', 'InvoiceHPCPOBox', 'InvoiceNewCustomer', 'InvoiceState', 'InvoiceStreet', 'InvoiceStreetTwo', 'InvoiceStreetThree', 'InvoiceZIP', 'InvoicePaymentTerm', 'IsTarifNumberToggler', 'ShippingAccountNumber', 'ShippingAddressType', 'ShippingCity', 'ShippingCompanyName', 'ShippingCompanyNameTwo', 'ShippingContactPerson', 'ShippingCountry', 'ShippingDepartment', 'ShippingDepartmentTwo', 'ShippingHPCPOBox', 'ShippingMethod', 'ShippingNewCustomer', 'ShippingState', 'ShippingStreet', 'ShippingStreetTwo', 'ShippingStreetThree', 'ShippingZIP', 'ShippingFreightTerm', 'SpecialShippingInstructions'],
+}
+
 const ORDER_DATA_MEMBERS = [
   'DependentListsData', 'FreeArticlesData', 'FreeListArticlesData', 'SupportArticlesData',
   'AccountDetailsData', 'AttachedFiles', 'CaseId', 'CleanOrder', 'ReasonUnclean', 'Comment',
@@ -65,11 +77,11 @@ function createRootChildInOrder(doc: Document, tagName: string, value: string): 
   }
   for (const child of Array.from(doc.documentElement.children)) {
     if (ORDER_DATA_MEMBERS.indexOf(child.tagName) > position) {
-      doc.documentElement.insertBefore(created, child)
+      insertIndented(doc.documentElement, created, child)
       return
     }
   }
-  doc.documentElement.appendChild(created)
+  insertIndented(doc.documentElement, created, null)
 }
 
 /**
@@ -115,10 +127,26 @@ function setChildTag(parent: Element, tagName: string, value: string): void {
       return
     }
   }
-  // Create if absent
+  // Absent. A null reference type is *omitted* by .NET, so an untouched field
+  // stays out of the file rather than becoming an empty element.
+  if (value === '') return
+
+  // Appending would put it after the members that follow it in the class, and
+  // XmlSerializer reads members as a sequence — that made saved files
+  // undeserializable, reported by GPC as "no Order-Part".
   const created = parent.ownerDocument!.createElement(tagName)
   created.textContent = value
-  parent.appendChild(created)
+  const members = NESTED_MEMBERS[parent.tagName]
+  const position = members ? members.indexOf(tagName) : -1
+  if (position >= 0) {
+    for (const child of Array.from(parent.children)) {
+      if (members!.indexOf(child.tagName) > position) {
+        insertIndented(parent, created, child)
+        return
+      }
+    }
+  }
+  insertIndented(parent, created, null)
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +187,9 @@ function patchAccountDetails(doc: Document, account: AccountDetails): void {
   setChildTag(el, 'VatId', account.vatId)
   setChildTag(el, 'CustomerIdAtGom', account.customerIdAtGom)
   setChildTag(el, 'Reference', account.reference)
-  setChildTag(el, 'IsGomPartner', String(account.isGomPartner))
+  // IsGomPartner is app state, not an AccountDetailsData member — it appears
+  // in no reference file, and writing it makes the file undeserializable.
+  // It is recovered on load from whether an account number is set.
   setChildTag(el, 'IsDistributor', String(account.isDistributor))
   setChildTag(el, 'IsNewCustomer', String(account.isNewCustomer))
 }
@@ -491,7 +521,11 @@ function escapeXml(s: string): string {
  */
 export function patchOrderXml(originalXml: string, order: OrderSummary, originalItemNos: string[] = []): string {
   const parser = new DOMParser()
-  const doc = parser.parseFromString(originalXml, 'application/xml')
+  // The declaration and the newline after it are removed first: the sentinel
+  // that protects CRLF (see CR_LF_SENTINEL) would otherwise become text before
+  // the root element, which is not valid XML. Both are restored on the way out.
+  const body = originalXml.replace(/^<\?xml[^?]*\?>\r?\n?/, '')
+  const doc = parser.parseFromString(body.replace(/\r\n/g, CR_LF_SENTINEL), 'application/xml')
 
   const parseError = doc.querySelector('parsererror')
   if (parseError) {
@@ -518,8 +552,63 @@ export function patchOrderXml(originalXml: string, order: OrderSummary, original
   const xml = new XMLSerializer().serializeToString(doc)
   const withDeclaration = xml.startsWith('<?xml')
     ? xml
-    : `${XML_DECLARATION}\n${xml}`
-  return withDeclaration.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
+    : `${XML_DECLARATION}\r\n${xml}`
+  return withDeclaration
+    // `<Name />`, with the space .NET writes. XMLSerializer emits `<Name/>`.
+    .replace(/<([A-Za-z_][\w.:-]*)((?:\s+[\w.:-]+="[^"]*")*)\/>/g, '<$1$2 />')
+    .replace(new RegExp(CR_LF_SENTINEL, 'g'), '\r\n')
 }
 
 const XML_DECLARATION = '<?xml version="1.0" encoding="utf-8"?>'
+
+/**
+ * Stands in for CRLF while the document is a DOM.
+ *
+ * An XML parser normalizes CRLF to LF everywhere, including inside text, so a
+ * parse-then-serialize round trip cannot tell a line ending from a newline that
+ * belongs to a value — and the reference files contain both. `ReasonUnclean`
+ * separates its lines with CRLF; multi-line descriptions and payment terms use
+ * bare LF, one file with 2101 of them. Converting all newlines one way or the
+ * other corrupts whichever it guesses wrong.
+ *
+ * Swapping CRLF for a character the data never contains keeps the two apart,
+ * and it is swapped back on the way out. U+E000 is the first Private Use Area
+ * code point: legal in XML 1.0, so the parser accepts it, and meaningless to
+ * every producer of this format, so it cannot appear in real content. (A
+ * control character would be rejected by the parser outright.)
+ */
+const CR_LF_SENTINEL = '\uE000'
+
+/**
+ * Puts a new element on its own line, indented like the sibling it sits beside.
+ *
+ * Inserting a bare element leaves it jammed onto the previous line. That is
+ * still valid XML, but it is not the shape the configurator writes, and it
+ * makes a saved file diff noisily against the original for no reason.
+ */
+function insertIndented(parent: Element, created: Element, before: Element | null): void {
+  const doc = parent.ownerDocument!
+
+  // Indentation is copied from whatever whitespace already separates this
+  // parent's children, so the new line sits with its siblings.
+  const sample = parent.firstChild?.nodeType === 3 ? (parent.firstChild.textContent ?? '') : ''
+  const separator = doc.createTextNode(
+    sample.includes(CR_LF_SENTINEL) ? sample : `${CR_LF_SENTINEL}  `,
+  )
+
+  if (before) {
+    // The whitespace that used to precede `before` now precedes the new
+    // element, so the separator goes *after* it — putting it in front would
+    // double one gap and leave the other missing.
+    parent.insertBefore(created, before)
+    parent.insertBefore(separator, before)
+    return
+  }
+
+  // Appending: slot in ahead of the trailing whitespace that indents the
+  // closing tag, not after it.
+  const trailing = parent.lastChild?.nodeType === 3 ? parent.lastChild : null
+  parent.insertBefore(separator, trailing)
+  parent.insertBefore(created, separator.nextSibling)
+}
+

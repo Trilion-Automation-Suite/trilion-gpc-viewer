@@ -48,7 +48,6 @@ export function createBlankOrderXml(): string {
     <VatId />
     <CustomerIdAtGom />
     <Reference />
-    <IsGomPartner>true</IsGomPartner>
     <IsDistributor>false</IsDistributor>
     <IsNewCustomer>false</IsNewCustomer>
   </AccountDetailsData>
@@ -144,4 +143,7 @@ export function createBlankOrderXml(): string {
   <OpportunityID />
   <PriceList>Partner</PriceList>
 </OrderData>`
+    // The configurator writes CRLF throughout; the template is authored with
+    // plain newlines, so they are normalised here rather than in every caller.
+    .replace(/\r?\n/g, '\r\n')
 }
