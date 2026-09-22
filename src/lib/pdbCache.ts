@@ -6,14 +6,21 @@
  */
 
 const DB_NAME = 'gpc-viewer-pdb'
-const DB_VERSION = 1
+const DB_VERSION = 2
 const STORE = 'pdb'
+/**
+ * Every product database the user has loaded, keyed by version name, so an open
+ * order can be switched between catalogs without hunting for the file again.
+ * `STORE` keeps its single 'current' slot for the new-order flow.
+ */
+const LIBRARY = 'pdb-library'
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE)
+      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE)
+      if (!req.result.objectStoreNames.contains(LIBRARY)) req.result.createObjectStore(LIBRARY)
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
@@ -60,4 +67,61 @@ export async function clearPdbCache(): Promise<void> {
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })
+}
+
+/** One entry in the catalog library, as listed in the header dropdown. */
+export interface PdbLibraryEntry {
+  /** Version name from ParametersData, e.g. "PDB290_09-2026". */
+  name: string
+  cachedAt: number
+}
+
+/** Version name of a decrypted PDB package, read from its config.xml. */
+export function pdbVersionName(configXml: string): string {
+  return /<VersionName>([^<]*)<\/VersionName>/.exec(configXml)?.[1]?.trim() ?? ''
+}
+
+export async function addPdbToLibrary(name: string, pdb: CachedPdb): Promise<void> {
+  if (!name) return
+  const db = await openDb()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LIBRARY, 'readwrite')
+    tx.objectStore(LIBRARY).put(pdb, name)
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function listPdbLibrary(): Promise<PdbLibraryEntry[]> {
+  try {
+    const db = await openDb()
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(LIBRARY, 'readonly')
+      const store = tx.objectStore(LIBRARY)
+      const keys = store.getAllKeys()
+      const values = store.getAll()
+      tx.oncomplete = () => {
+        const names = keys.result as string[]
+        const entries = values.result as CachedPdb[]
+        resolve(names.map((name, i) => ({ name, cachedAt: entries[i]?.cachedAt ?? 0 })))
+      }
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch {
+    return []
+  }
+}
+
+export async function getPdbFromLibrary(name: string): Promise<CachedPdb | null> {
+  try {
+    const db = await openDb()
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(LIBRARY, 'readonly')
+      const req = tx.objectStore(LIBRARY).get(name)
+      req.onsuccess = () => resolve((req.result as CachedPdb) ?? null)
+      req.onerror = () => reject(req.error)
+    })
+  } catch {
+    return null
+  }
 }

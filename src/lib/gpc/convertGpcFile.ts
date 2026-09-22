@@ -22,6 +22,8 @@ const BOM = '﻿'
 export interface ConvertedFile {
   /** Encrypted `.gconfiguration` bytes, ready to download. */
   bytes: ArrayBuffer
+  /** The same package before encryption, for re-parsing and further editing. */
+  decryptedZip: ArrayBuffer
   report: ConversionReport
   /** The catalog the order came from, as it recorded itself. */
   sourceCatalog: string | null
@@ -110,8 +112,24 @@ export async function convertOpenedGpc(
   targetPdbBytes: ArrayBuffer,
   sourceFilename = 'order.gconfiguration'
 ): Promise<ConvertedFile> {
+  return convertToDecryptedCatalog(decryptedZip, await decryptGpcFile(targetPdbBytes), sourceFilename)
+}
+
+/**
+ * Same conversion against a catalog the app already holds decrypted — what the
+ * PDB library stores — so switching catalogs costs no decryption.
+ *
+ * Returns the converted package *decrypted*, so the caller can re-parse it
+ * through the normal load path and keep editing, rather than being handed a
+ * finished download.
+ */
+export async function convertToDecryptedCatalog(
+  decryptedZip: ArrayBuffer,
+  decryptedTargetZip: ArrayBuffer,
+  sourceFilename = 'order.gconfiguration'
+): Promise<ConvertedFile> {
   const source = await readContainer(new Uint8Array(decryptedZip))
-  const target = await readContainer(new Uint8Array(await decryptGpcFile(targetPdbBytes)))
+  const target = await readContainer(new Uint8Array(decryptedTargetZip))
 
   const order = parseOrderXml(part(source, 'order.xml'))
   const sourceCatalog = textMember(order.root, 'SourceFileName')
@@ -139,8 +157,10 @@ export async function convertOpenedGpc(
   const base = sourceFilename.replace(/\.gconfiguration$/i, '')
   const suffix = report.targetCatalog ? `-${report.targetCatalog}` : '-converted'
 
+  const decryptedOut = zip.buffer as ArrayBuffer
   return {
-    bytes: await encryptGpcFile(zip.buffer as ArrayBuffer),
+    bytes: await encryptGpcFile(decryptedOut),
+    decryptedZip: decryptedOut,
     report,
     sourceCatalog,
     suggestedFilename: `${base}${suffix}.gconfiguration`,

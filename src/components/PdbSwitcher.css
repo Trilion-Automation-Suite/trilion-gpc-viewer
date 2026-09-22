@@ -1,0 +1,52 @@
+.pdb-switcher { position: relative; display: inline-flex; }
+
+.pdb-badge {
+  margin-left: .5rem;
+  padding: .12rem .5rem;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: .7rem;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  opacity: .85;
+  cursor: default;
+}
+.pdb-badge-actionable { cursor: pointer; }
+.pdb-badge-actionable:hover { opacity: 1; border-color: rgba(255, 255, 255, .7); }
+.pdb-badge:disabled { opacity: .6; cursor: progress; }
+.pdb-caret { margin-left: .3rem; font-size: .6rem; }
+
+.pdb-menu {
+  position: absolute; top: calc(100% + .35rem); left: .5rem; z-index: 40;
+  min-width: 15rem; padding: .4rem;
+  background: var(--panel, #fff); color: var(--text, #111);
+  border: 1px solid var(--border, #d5d5d5); border-radius: .5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+}
+.pdb-menu-head { margin: .1rem .4rem .35rem; font-size: .7rem; text-transform: uppercase; letter-spacing: .04em; opacity: .6; }
+.pdb-menu-empty { margin: .25rem .4rem; font-size: .8rem; opacity: .7; }
+.pdb-menu-item {
+  display: block; width: 100%; text-align: left;
+  padding: .35rem .4rem; border: 0; border-radius: .3rem;
+  background: transparent; color: inherit; font: inherit; font-size: .85rem; cursor: pointer;
+}
+.pdb-menu-item:hover { background: rgba(127, 127, 127, .15); }
+.pdb-menu-load { display: block; margin-top: .3rem; padding: .35rem .4rem; border-top: 1px solid var(--border, #e2e2e2); font-size: .8rem; cursor: pointer; }
+.pdb-menu-load input { display: block; width: 100%; margin-top: .3rem; font-size: .75rem; }
+
+.pdb-report {
+  position: absolute; top: calc(100% + .35rem); left: .5rem; z-index: 40;
+  width: 30rem; max-width: 80vw; padding: .6rem .75rem;
+  background: var(--panel, #fff); color: var(--text, #111);
+  border: 1px solid var(--border, #d5d5d5); border-radius: .5rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  font-size: .82rem;
+}
+.pdb-report-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.pdb-report-head button { border: 0; background: transparent; font-size: 1.1rem; line-height: 1; cursor: pointer; color: inherit; }
+.pdb-report p { margin: .4rem 0 0; }
+.pdb-report-note { opacity: .7; }
+.pdb-report-warn { color: #8a5a00; }

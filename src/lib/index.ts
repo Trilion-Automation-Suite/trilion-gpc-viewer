@@ -43,6 +43,19 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
   // 2. Decrypt
   const decrypted = await decryptGpcFile(buffer)
 
+  return parseDecryptedPackage(decrypted, file.name, fileHandle)
+}
+
+/**
+ * Everything after decryption, split out so a package produced in memory — a
+ * catalog conversion, say — goes through exactly the same parse as one read
+ * from disk, instead of a parallel path that can drift.
+ */
+export async function parseDecryptedPackage(
+  decrypted: ArrayBuffer,
+  sourceFile: string,
+  fileHandle?: FileSystemFileHandle
+): Promise<ParseResult> {
   // 3. Validate ZIP magic bytes ("PK" = 0x50 0x4B)
   const header = new Uint8Array(decrypted, 0, 2)
   if (header[0] !== 0x50 || header[1] !== 0x4b) {
@@ -89,7 +102,7 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
     order,
     gpcVersion,
     pdbVersion: readSourceFileName(orderXml),
-    sourceFile: file.name,
+    sourceFile,
     rawOrderXml: orderXml,
     rawDecryptedBuffer: decrypted,
     originalItemNos: order.items.map(i => i.no),

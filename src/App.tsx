@@ -2,9 +2,12 @@ declare const __APP_VERSION__: string
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
-import { loadGpcFile, createNewOrder } from './lib/index.ts'
+import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
-import { loadPdbCache } from './lib/pdbCache.ts'
+import { loadPdbCache, addPdbToLibrary, listPdbLibrary, getPdbFromLibrary, pdbVersionName } from './lib/pdbCache.ts'
+import type { PdbLibraryEntry } from './lib/pdbCache.ts'
+import { convertToDecryptedCatalog } from './lib/gpc/convertGpcFile.ts'
+import type { ConversionReport } from './lib/gpc/convertCatalog.ts'
 import { saveGpcFile, saveGpcFileAs } from './lib/saveGpcFile.ts'
 import { FilePicker } from './components/FilePicker.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
@@ -16,7 +19,7 @@ import { ContactTab } from './components/ContactTab.tsx'
 import { AdminTab } from './components/AdminTab.tsx'
 import { CommentsTab } from './components/CommentsTab.tsx'
 import { EucTab } from './components/EucTab.tsx'
-import { ConvertTab } from './components/ConvertTab.tsx'
+import { PdbSwitcher } from './components/PdbSwitcher.tsx'
 import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
@@ -26,7 +29,7 @@ function nextItemNo(items: ConfigItem[]): string {
   return String(topLevel.length > 0 ? Math.max(...topLevel) + 1 : 1)
 }
 
-type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc' | 'convert'
+type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc'
 const TAB_LABELS: Record<Tab, string> = {
   items: 'Items',
   account: 'Account Details',
@@ -34,7 +37,6 @@ const TAB_LABELS: Record<Tab, string> = {
   admin: 'Administration Information',
   comments: 'Comments',
   euc: 'EUC Check',
-  convert: 'Convert Catalog',
 }
 
 type AppState =
@@ -48,6 +50,9 @@ export function App() {
   const [darkMode, setDarkMode] = useState(false)
   const [tab, setTab] = useState<Tab>('items')
   const [pdbCached, setPdbCached] = useState<boolean | null>(null)  // null = not checked yet
+  const [pdbLibrary, setPdbLibrary] = useState<PdbLibraryEntry[]>([])
+  const [converting, setConverting] = useState(false)
+  const [conversionReport, setConversionReport] = useState<ConversionReport | null>(null)
 
   // Mutable order copy — this is what the tab components read/write in edit mode
   const [order, setOrder] = useState<OrderSummary | null>(null)
@@ -84,6 +89,10 @@ export function App() {
     try {
       const pdb = await loadPdbFile(file)
       setPdbCached(true)
+      // Also remember it as a switchable catalog, so a PDB loaded once for a new
+      // order is available later when re-targeting an existing one.
+      await addPdbToLibrary(pdbVersionName(pdb.configXml), { ...pdb, cachedAt: Date.now() })
+      setPdbLibrary(await listPdbLibrary())
       const result = await createNewOrder(pdb)
       setState({ status: 'loaded', result })
     } catch (err) {
@@ -394,6 +403,54 @@ export function App() {
     }
   }
 
+  // Catalogs the user has loaded before, offered in the header switcher.
+  useEffect(() => { void listPdbLibrary().then(setPdbLibrary) }, [])
+
+  /**
+   * Re-targets the open order at another catalog and keeps it open, so the
+   * normal Save path writes it. Converting is an edit, not an export.
+   */
+  const applyConversion = useCallback(async (targetZip: ArrayBuffer) => {
+    if (state.status !== 'loaded') return
+    setConverting(true)
+    try {
+      const converted = await convertToDecryptedCatalog(
+        state.result.rawDecryptedBuffer, targetZip, state.result.sourceFile
+      )
+      const reparsed = await parseDecryptedPackage(
+        converted.decryptedZip, state.result.sourceFile, state.result.fileHandle
+      )
+      setState({ status: 'loaded', result: reparsed })
+      setOrder(reparsed.order)
+      setIsDirty(true)
+      setConversionReport(converted.report)
+    } catch (err) {
+      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+    } finally {
+      setConverting(false)
+    }
+  }, [state])
+
+  const convertToCatalog = useCallback(async (name: string) => {
+    const pdb = await getPdbFromLibrary(name)
+    if (pdb) await applyConversion(pdb.rawBuffer)
+  }, [applyConversion])
+
+  const loadCatalogFile = useCallback(async (file: File) => {
+    setConverting(true)
+    try {
+      const pdb = await loadPdbFile(file)
+      const entry = { ...pdb, cachedAt: Date.now() }
+      const name = pdbVersionName(pdb.configXml)
+      await addPdbToLibrary(name, entry)
+      setPdbLibrary(await listPdbLibrary())
+      await applyConversion(pdb.rawBuffer)
+    } catch (err) {
+      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+      setConverting(false)
+    }
+  }, [applyConversion])
+
   const loadedFilename =
     state.status === 'loaded' ? state.result.sourceFile : undefined
   const loadedPdb = state.status === 'loaded' ? state.result.pdbVersion : ''
@@ -414,10 +471,17 @@ export function App() {
             {loadedFilename}
           </span>
         )}
-        {loadedPdb && (
-          <span className="pdb-badge" title={`Built on product database ${loadedPdb}`}>
-            {loadedPdb}
-          </span>
+        {state.status === 'loaded' && (
+          <PdbSwitcher
+            current={loadedPdb}
+            library={pdbLibrary}
+            canConvert={isEditing}
+            busy={converting}
+            onConvertTo={convertToCatalog}
+            onLoadCatalog={loadCatalogFile}
+            report={conversionReport}
+            onDismissReport={() => setConversionReport(null)}
+          />
         )}
         <div className="header-right">
           <button
@@ -598,12 +662,6 @@ export function App() {
                 <EucTab
                   order={order}
                   currencyRates={state.status === 'loaded' ? state.result.currencyRates : {}}
-                />
-              )}
-              {tab === 'convert' && (
-                <ConvertTab
-                  decryptedZip={state.status === 'loaded' ? state.result.rawDecryptedBuffer : null}
-                  sourceFilename={state.status === 'loaded' ? state.result.sourceFile : ''}
                 />
               )}
             </div>
