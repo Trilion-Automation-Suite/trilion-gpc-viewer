@@ -95,7 +95,9 @@ describe('addCatalogArticle routes an article to the right kind of item', () => 
     expect(xml.match(/<SupportScreenData>/g)).toHaveLength(1)
     expect(xml.match(/<SupportArticle>/g)).toHaveLength(2)
     expect(xml).toContain('<TotalMsrp>4000</TotalMsrp>')
-    expect(xml).toContain('<TotalDp>2000</TotalDp>')
+    // The distributor total is derived as msrp x (dp / msrp), so it carries the
+    // scale of a .NET decimal division — the configurator writes it that way.
+    expect(xml).toContain('<TotalDp>2000.0000000000000000000000000</TotalDp>')
   })
 
   it('finds the support item by type, since its filter does not match the article tag', () => {

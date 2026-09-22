@@ -508,7 +508,18 @@ function supportScreen(order: OrderDocument, config: ElementValue, options: Supp
   return screen
 }
 
-/** Support totals are the sum of both article lists, times each amount. */
+/**
+ * Support totals, shaped the way the configurator computes them.
+ *
+ * The list total is a plain sum. The distributor total is *not*: the
+ * configurator derives it as `msrp x (dp / msrp)` — see
+ * SoftwareSupportArticlesViewModel, which accumulates
+ * `SumMsrpDiscounted * MsrpToDpFactor`. Mathematically that is the sum back
+ * again, but a .NET `decimal` division carries 29 significant digits and the
+ * multiplication keeps them, so the saved value is `4145.0000000000000000000000000`
+ * rather than `4145`. Summing directly gives the right number with the wrong
+ * shape, and the bytes differ.
+ */
 function retotalSupportScreen(screen: ElementValue): void {
   let msrp: Dec = fromInt(0)
   let dp: Dec = fromInt(0)
@@ -523,7 +534,7 @@ function retotalSupportScreen(screen: ElementValue): void {
     }
   }
   setText(screen, 'TotalMsrp', decimalString(msrp))
-  setText(screen, 'TotalDp', decimalString(dp))
+  setText(screen, 'TotalDp', decimalString(isZero(msrp) ? dp : multiply(msrp, divide(dp, msrp))))
 }
 
 function setText(el: ElementValue, name: string, value: string): void {

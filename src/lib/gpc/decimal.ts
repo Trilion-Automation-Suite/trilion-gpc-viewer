@@ -26,6 +26,42 @@ function pow10(n: number): bigint {
   return TEN ** BigInt(n)
 }
 
+/**
+ * .NET's `decimal` is 96-bit: about 29 significant digits. Results that would
+ * need more are rounded to fit, and that ceiling is *visible in saved files* —
+ * it is what turns `Msrp x (Dp / Msrp)` from a plain 1078 into
+ * `1078.0000000000000000000000000`, 4 integer digits plus 25 decimals.
+ */
+const MAX_SIGNIFICANT_DIGITS = 29
+
+function digitCount(n: bigint): number {
+  const abs = n < 0n ? -n : n
+  return abs === 0n ? 1 : abs.toString().length
+}
+
+/** Rounds half away from zero, dropping `drop` least-significant digits. */
+function dropDigits(unscaled: bigint, drop: number): bigint {
+  if (drop <= 0) return unscaled
+  const divisor = pow10(drop)
+  const negative = unscaled < 0n
+  const abs = negative ? -unscaled : unscaled
+  let q = abs / divisor
+  if ((abs % divisor) * 2n >= divisor) q += 1n
+  return negative ? -q : q
+}
+
+/**
+ * Brings a value inside .NET's precision, trimming decimals as needed. Integer
+ * digits are never dropped: a value too large for a `decimal` would have thrown
+ * in the configurator, not silently truncated.
+ */
+function clampPrecision(d: Dec): Dec {
+  const excess = digitCount(d.unscaled) - MAX_SIGNIFICANT_DIGITS
+  if (excess <= 0) return d
+  const drop = Math.min(excess, d.scale)
+  return { unscaled: dropDigits(d.unscaled, drop), scale: d.scale - drop }
+}
+
 export function parseDecimal(text: string): Dec {
   const s = text.trim()
   if (!/^[+-]?\d*(\.\d*)?$/.test(s) || s === '' || s === '+' || s === '-') {
@@ -63,9 +99,9 @@ export function formatDecimal(d: Dec): string {
   return `${negative ? '-' : ''}${whole}${frac}`
 }
 
-/** Multiplication: scales add, as in .NET. */
+/** Multiplication: scales add, then the result is trimmed to .NET's precision. */
 export function multiply(a: Dec, b: Dec): Dec {
-  return { unscaled: a.unscaled * b.unscaled, scale: a.scale + b.scale }
+  return clampPrecision({ unscaled: a.unscaled * b.unscaled, scale: a.scale + b.scale })
 }
 
 /** Addition: the result takes the larger scale. */
@@ -96,18 +132,21 @@ export function compare(a: Dec, b: Dec): number {
  * of 394 against 493 is not a round fraction, and truncating it early moves the
  * final price.
  */
-export function divide(a: Dec, b: Dec, scale = 28): Dec {
+export function divide(a: Dec, b: Dec, scale?: number): Dec {
   if (b.unscaled === 0n) throw new Error('decimal: division by zero')
-  // Shift the numerator so the integer division lands at the wanted scale.
-  const shift = scale + b.scale - a.scale
+  // Without an explicit scale, carry as many digits as a .NET decimal holds.
+  // That is what makes a x (b / a) come back as b with the division's scale
+  // still attached, which is how the configurator's totals are shaped.
+  const wanted = scale ?? MAX_SIGNIFICANT_DIGITS
+  const shift = wanted + b.scale - a.scale
   const numerator = shift >= 0 ? a.unscaled * pow10(shift) : a.unscaled / pow10(-shift)
-  const denominator = b.unscaled
-  const negative = (numerator < 0n) !== (denominator < 0n)
+  const negative = (numerator < 0n) !== (b.unscaled < 0n)
   const n = numerator < 0n ? -numerator : numerator
-  const dd = denominator < 0n ? -denominator : denominator
+  const dd = b.unscaled < 0n ? -b.unscaled : b.unscaled
   let q = n / dd
   if ((n % dd) * 2n >= dd) q += 1n
-  return { unscaled: negative ? -q : q, scale }
+  const result = { unscaled: negative ? -q : q, scale: wanted }
+  return scale === undefined ? clampPrecision(result) : result
 }
 
 export type RoundingMode = 'commercial' | 'up' | 'down'

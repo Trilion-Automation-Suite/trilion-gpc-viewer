@@ -75,7 +75,11 @@ describe('rounding rules from a catalog', () => {
     expect(f(applyRounding(rules, d('1771.00'), 'DP', 'USD', 'Spareparts'))).toBe('1771')
   })
 
-  it('ignores rules for another currency, leaving the value untouched', () => {
-    expect(f(applyRounding(rules, d('2610.50'), 'MSRP', 'EUR', '*'))).toBe('2610.50')
+  it('falls back to the whole unit when no rule covers the value', () => {
+    // Another currency matches nothing. So does a value below the band a rule
+    // starts at — the USD list rule begins at 100, which is why a zero-priced
+    // carrier article is written as 0 and not 0.00.
+    expect(f(applyRounding(rules, d('2610.50'), 'MSRP', 'EUR', '*'))).toBe('2611')
+    expect(f(applyRounding(rules, d('0.00'), 'MSRP', 'USD', 'No Discount'))).toBe('0')
   })
 })

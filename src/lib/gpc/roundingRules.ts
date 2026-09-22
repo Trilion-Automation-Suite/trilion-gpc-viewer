@@ -107,7 +107,16 @@ export function selectRule(
   return fallback
 }
 
-/** Applies the catalog's rounding, or leaves the value alone when no rule fits. */
+/**
+ * The whole unit, used when no rule covers a value.
+ *
+ * That happens for real prices: the USD list rule starts at 100, so a zero-priced
+ * carrier article matches nothing. The configurator still writes `0`, not `0.00`,
+ * so an unmatched value is not left at whatever scale the conversion gave it.
+ */
+const WHOLE_UNIT = parseDecimal('1')
+
+/** Applies the catalog's rounding, falling back to the whole unit. */
 export function applyRounding(
   rules: RoundingRule[],
   value: Dec,
@@ -116,5 +125,7 @@ export function applyRounding(
   mpg: string
 ): Dec {
   const rule = selectRule(rules, value, kind, currencyIso, mpg)
-  return rule ? roundToQuantum(value, rule.roundTo, rule.mode) : value
+  return rule
+    ? roundToQuantum(value, rule.roundTo, rule.mode)
+    : roundToQuantum(value, WHOLE_UNIT, 'commercial')
 }
