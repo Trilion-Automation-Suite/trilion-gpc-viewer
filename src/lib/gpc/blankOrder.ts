@@ -27,6 +27,15 @@ export interface BlankOrderInputs {
   destinationCountry?: string
   /** Session state. Selects the newest CurrenciesData row with this ISO. */
   currencyIso?: string
+  /**
+   * Spec §0 pin: which exchange-rate row the order is using.
+   *
+   * Normally the newest row for the ISO. But a rate refresh replaces the
+   * catalog's table while updating the order's own currency only when the rate
+   * changed, so an order can hold a `ValidFrom` that appears nowhere in the
+   * catalog it ships with. Unreachable by derivation, so it is injected.
+   */
+  currencyValidFrom?: string
 }
 
 const DEFAULT_DESTINATION = 'United States of America'
@@ -102,7 +111,7 @@ function destinationRow(config: ElementValue, country: string): ElementValue {
  * Confirmed against reference files: orders built from a given PDB all select
  * exactly this row.
  */
-function currencyRow(config: ElementValue, iso: string): ElementValue {
+function currencyRow(config: ElementValue, iso: string, validFrom?: string): ElementValue {
   const rows = children(section(config, 'CurrenciesData'), 'Currencies').filter(
     (r) => field(r, 'Iso') === iso
   )
@@ -111,7 +120,18 @@ function currencyRow(config: ElementValue, iso: string): ElementValue {
   for (const r of rows) {
     if (BigInt(field(r, 'ValidFrom') ?? '0') > BigInt(field(newest, 'ValidFrom') ?? '0')) newest = r
   }
-  return { kind: 'element', type: null, members: newest.members.map((m) => ({ ...m })) }
+  const row: ElementValue = {
+    kind: 'element',
+    type: null,
+    members: newest.members.map((m) => ({ ...m })),
+  }
+  if (validFrom) {
+    // Overwrites rather than selects: the pinned row may not be in this catalog
+    // at all, which is precisely the case the pin exists for.
+    const member = row.members.find((m) => m.name === 'ValidFrom')
+    if (member) member.value = { kind: 'text', type: null, value: validFrom }
+  }
+  return row
 }
 
 /** A user's first configured price list. */
@@ -157,7 +177,7 @@ export function buildBlankOrder(pdb: GpcContainer, inputs: BlankOrderInputs): Or
     ['FinalPriceForEndCustomer', txt('0')],
     ['FinalPriceForEndCustomerLocalCurrency', nil()],
     ['FinalPriceForEndCustomerWithHandlingFee', nil()],
-    ['Currency', currencyRow(config, iso)],
+    ['Currency', currencyRow(config, iso, inputs.currencyValidFrom)],
     ['HandlingFee', nil()],
     ['HasPriceOnRequest', txt('false')],
     ['IsCustomerDiscountAcknowledged', txt('false')],
