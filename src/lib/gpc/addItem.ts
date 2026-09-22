@@ -326,3 +326,178 @@ function standardTerms(distributor: ElementValue | null, name: string): string[]
 function set(order: OrderDocument, name: string, value: OrderValue): void {
   setMember(order.root, 'OrderData', name, value)
 }
+
+// ── support articles (SMA) ────────────────────────────────────────────────────
+
+/**
+ * Articles carrying this tag are software-support entries. The catalog uses
+ * exactly one such tag across 270 articles, and they do not belong to a FreeList
+ * item at all — they go inside the support item's SoftwareSupportArticles.
+ */
+const SOFTWARE_SUPPORT_TAG = '<software-support>'
+
+/** Support items are typed `Supportextension`, not `Support`. */
+const SUPPORT_ITEM_TYPE = 'Supportextension'
+
+/** True when an article belongs in a support screen rather than a free list. */
+export function isSupportArticle(article: ElementValue): boolean {
+  return (field(article, 'FilterTags') ?? '').includes(SOFTWARE_SUPPORT_TAG)
+}
+
+/**
+ * The catalog's support item — "Software Maintenance Agreement", grouped under
+ * "ZEISS Metrology Care".
+ *
+ * Deliberately not matched through the FreeList filter-tag rule: a support
+ * item's `WorksheetArticleFilter` is `<Support>SMA_EXT`, which has nothing in
+ * common with the article's `<software-support>` tag. Matching on `ItemType` is
+ * what actually identifies it.
+ */
+export function findSupportItem(config: ElementValue): ElementValue {
+  const items = listItems(section(config, 'ConfigurationItemsData'), 'ConfigurationItems')
+  for (const item of items) {
+    if (field(item, 'ItemType') === SUPPORT_ITEM_TYPE) return item
+  }
+  throw new Error(`addItem: PDB has no ${SUPPORT_ITEM_TYPE} configuration item`)
+}
+
+export interface SupportContract {
+  /** Dongle or sensor serial the agreement covers. */
+  sensorSnDongleId?: string
+  startNewContract?: string
+  endNewContract?: string
+  endOldContract?: string
+  /** Contact shown on the support line; GPC labels these Reply1/Reply2. */
+  replyEmail?: string
+  replyName?: string
+}
+
+/**
+ * Adds a software-support article to the order's support screen, creating that
+ * screen from the catalog item the first time.
+ *
+ * This is the case the app got wrong: it invented a configuration item from the
+ * article's MPG ("SMA (Stand-alone / Extension)") and made a separate line,
+ * instead of nesting the article under the existing "Software Maintenance
+ * Agreement" item. The article's MPG is not its category.
+ */
+export function addSupportArticle(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  articleName: string,
+  options: AddArticleOptions & SupportContract = {}
+): OrderDocument {
+  const config = readPdbConfig(pdb)
+  const article = findArticle(config, articleName)
+  if (!isSupportArticle(article)) {
+    throw new Error(`addItem: ${JSON.stringify(articleName)} is not a software-support article`)
+  }
+
+  const priceListName = options.priceListName ?? orderField(order, 'PriceList')
+  if (!priceListName) throw new Error('addItem: order has no PriceList')
+  const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
+  const amount = options.amount ?? 1
+  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate)
+
+  const screen = supportScreen(order, config, options)
+  const entry = el([
+    ['Amount', txt(String(amount))],
+    ['Step', txt('1')],
+    ['Article', clone(article)],
+    ['OverwrittenDp', nil()],
+    ['OverwrittenMrsp', nil()],
+    ['PriceOnRequest', txt('false')],
+    ['EuroMsrp', nil()],
+    ['Msrp', txt(decimalString(msrp))],
+    ['Dp', txt(decimalString(dp))],
+    ['SumMsrp', nil()],
+    ['SumDp', nil()],
+    ['CustomQuantityDiscount', nil()],
+    ['EconomyYears', el([])],
+    ...(options.endNewContract ? [['EndNewContract', txt(options.endNewContract)] as [string, OrderValue]] : []),
+    ...(options.endOldContract ? [['EndOldContract', txt(options.endOldContract)] as [string, OrderValue]] : []),
+    ['IsOlderSelected', txt('false')],
+    ['MsrpForMissingMonth', nil()],
+    ['MsrpForNewContract', nil()],
+    ['MsrpPerYear', nil()],
+    ...(options.sensorSnDongleId ? [['SensorSnDongleId', txt(options.sensorSnDongleId)] as [string, OrderValue]] : []),
+    ...(options.startNewContract ? [['StartNewContract', txt(options.startNewContract)] as [string, OrderValue]] : []),
+  ])
+
+  const list = sub(screen, 'SoftwareSupportArticles')
+  if (!list) throw new Error('addItem: support screen has no SoftwareSupportArticles')
+  list.members.push({ name: 'SupportArticle', value: entry })
+
+  retotalSupportScreen(screen)
+  return order
+}
+
+/** The order's support screen, cloned from the catalog on first use. */
+function supportScreen(order: OrderDocument, config: ElementValue, options: SupportContract): ElementValue {
+  const list = order.root.members.find((m) => m.name === 'SupportArticlesData')?.value
+  if (!list || list.kind !== 'element') throw new Error('addItem: order has no <SupportArticlesData>')
+
+  const existing = list.members.find((m) => m.value.kind === 'element')
+  if (existing && existing.value.kind === 'element') return existing.value
+
+  const screen = el([
+    ['ConfigurationItem', clone(findSupportItem(config))],
+    ['UseInCalculation', txt('true')],
+    ['No', txt(String(nextItemNumber(order)))],
+    ...(options.replyEmail ? [['Reply1', txt(options.replyEmail)] as [string, OrderValue]] : []),
+    ...(options.replyName ? [['Reply2', txt(options.replyName)] as [string, OrderValue]] : []),
+    ['TotalDp', txt('0')],
+    ['TotalMsrp', txt('0')],
+    ['Discount', nil()],
+    ['IsDiscountPercentage', txt('false')],
+    ['IsHidden', txt('false')],
+    ['HardwareSupportArticles', el([])],
+    ['SoftwareSupportArticles', el([])],
+    ['IsLegacy', txt('false')],
+    ['DependentListSupportScreenDatas', el([])],
+    ['CustomVolumeDiscount', nil()],
+    ['VolumeDiscount', txt('0')],
+  ])
+  list.members.push({ name: 'SupportScreenData', value: screen })
+  return screen
+}
+
+/** Support totals are the sum of both article lists, times each amount. */
+function retotalSupportScreen(screen: ElementValue): void {
+  let msrp = 0
+  let dp = 0
+  for (const listName of ['HardwareSupportArticles', 'SoftwareSupportArticles']) {
+    const list = sub(screen, listName)
+    if (!list) continue
+    for (const m of list.members) {
+      if (m.value.kind !== 'element') continue
+      const amount = Number(field(m.value, 'Amount') ?? '1')
+      msrp += Number(field(m.value, 'Msrp') ?? '0') * amount
+      dp += Number(field(m.value, 'Dp') ?? '0') * amount
+    }
+  }
+  setText(screen, 'TotalMsrp', decimalString(msrp))
+  setText(screen, 'TotalDp', decimalString(dp))
+}
+
+function setText(el: ElementValue, name: string, value: string): void {
+  const member = el.members.find((m) => m.name === name)
+  if (member) member.value = { kind: 'text', type: null, value }
+}
+
+/**
+ * Adds an article to the right kind of line item for what it is: a support
+ * article joins the support screen, anything else becomes a free-list item.
+ * Callers that do not want to care which should use this.
+ */
+export function addCatalogArticle(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  articleName: string,
+  options: AddArticleOptions & SupportContract = {}
+): OrderDocument {
+  const article = findArticle(readPdbConfig(pdb), articleName)
+  return isSupportArticle(article)
+    ? addSupportArticle(order, pdb, articleName, options)
+    : addArticle(order, pdb, articleName, options)
+}

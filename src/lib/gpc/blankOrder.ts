@@ -50,7 +50,10 @@ function parseConfigRoot(bytes: Uint8Array): ElementValue {
   // config.xml shares order.xml's writer, so the same parser reads it; only the
   // root element name differs.
   const xml = new TextDecoder('utf-8').decode(bytes)
-  const patched = xml.replace('<AdministrationData ', '<OrderData ').replace('</AdministrationData>', '</OrderData>')
+  // Both forms occur: with namespace attributes in a real PDB, bare in fixtures.
+  const patched = xml
+    .replace(/<AdministrationData(\s|>)/, '<OrderData$1')
+    .replace('</AdministrationData>', '</OrderData>')
   return parseOrderXml(new TextEncoder().encode(patched)).root
 }
 
