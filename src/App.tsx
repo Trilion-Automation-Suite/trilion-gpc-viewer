@@ -48,8 +48,24 @@ const TAB_LABELS: Record<Tab, string> = {
 type AppState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'loaded'; result: ParseResult }
+  | {
+      status: 'loaded'
+      result: ParseResult
+      /**
+       * Bumped only when a *different* file is opened. Editing the open order
+       * replaces `result` too, and the sync effect below must not treat that as
+       * a fresh load — doing so threw away the edit and cleared the unsaved
+       * flag, which is why an added product vanished without an error.
+       */
+      loadId: number
+    }
   | { status: 'error'; message: string }
+
+let nextLoadId = 1
+/** A newly opened file: the sync effect should adopt it wholesale. */
+function opened(result: ParseResult): AppState {
+  return { status: 'loaded', result, loadId: nextLoadId++ }
+}
 
 export function App() {
   const [state, setState] = useState<AppState>({ status: 'idle' })
@@ -76,7 +92,9 @@ export function App() {
     loadLatestPdb().then(cached => setPdbCached(cached !== null)).catch(() => setPdbCached(false))
   }, [])
 
-  // Sync mutable order copy whenever a new file is loaded
+  // Adopt a newly opened file. Keyed on loadId, so editing the order already
+  // open does not reset it.
+  const loadId = state.status === 'loaded' ? state.loadId : 0
   useEffect(() => {
     if (state.status === 'loaded') {
       setOrder(state.result.order)
@@ -89,7 +107,8 @@ export function App() {
       setIsDirty(false)
       setFileHandle(undefined)
     }
-  }, [state])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.status, loadId])
 
   const handlePdbFile = useCallback(async (file: File) => {
     setState({ status: 'loading' })
@@ -101,7 +120,7 @@ export function App() {
       await addPdbToLibrary(pdbVersionName(pdb.configXml), { ...pdb, cachedAt: Date.now() })
       setPdbLibrary(await listPdbLibrary())
       const result = await createNewOrder(pdb)
-      setState({ status: 'loaded', result })
+      setState(opened(result))
     } catch (err) {
       setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
     }
@@ -115,7 +134,7 @@ export function App() {
     setState({ status: 'loading' })
     try {
       const result = await loadGpcFile(file, handle)
-      setState({ status: 'loaded', result })
+      setState(opened(result))
     } catch (err) {
       const message =
         err instanceof Error
@@ -135,7 +154,7 @@ export function App() {
       // Newest catalog available, not merely the last one loaded.
       const cached = await loadLatestPdb()
       const result = await createNewOrder(cached)
-      setState({ status: 'loaded', result })
+      setState(opened(result))
     } catch (err) {
       setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
     }
@@ -214,8 +233,11 @@ export function App() {
         amount: fields.amount,
       })
       const orderXml = new TextDecoder().decode(serializeOrderXml(doc))
-      setState({ status: 'loaded', result: { ...state.result, rawOrderXml: orderXml } })
-      setOrder(parseOrder(orderXml))
+      const parsed = parseOrder(orderXml)
+      // Same file, edited: keep loadId so the sync effect leaves our new order
+      // and the unsaved flag alone.
+      setState({ ...state, result: { ...state.result, rawOrderXml: orderXml, order: parsed } })
+      setOrder(parsed)
       setIsDirty(true)
     } catch (err) {
       // Never replace the loaded order with an error screen: a product that
@@ -429,7 +451,8 @@ export function App() {
       const reparsed = await parseDecryptedPackage(
         converted.decryptedZip, state.result.sourceFile, state.result.fileHandle
       )
-      setState({ status: 'loaded', result: reparsed })
+      // A conversion rewrites the open order; it is an edit, not a new file.
+      setState({ ...state, result: reparsed })
       setOrder(reparsed.order)
       setIsDirty(true)
       setConversionReport(converted.report)
