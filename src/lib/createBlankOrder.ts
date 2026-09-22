@@ -55,15 +55,8 @@ export function createBlankOrderXml(): string {
   <AttachedFiles />
   <CaseId />
   <CleanOrder>false</CleanOrder>
-  <Comments />
-  <ContractType>Purchase</ContractType>
+  <Comment />
   <CreationDate>${now}</CreationDate>
-  <Currency>
-    <Iso>USD</Iso>
-    <Display>USD</Display>
-    <Description>US Dollar</Description>
-    <ExchangeRate>1</ExchangeRate>
-  </Currency>
   <DestinationNew>
     <Country>United States of America</Country>
     <CountryCode>+1</CountryCode>
@@ -74,6 +67,13 @@ export function createBlankOrderXml(): string {
   <DiscountForCustomer>0</DiscountForCustomer>
   <Distributor>2104995</Distributor>
   <FinalPriceForEndCustomer>0</FinalPriceForEndCustomer>
+  <Currency>
+    <Iso>USD</Iso>
+    <Display>USD</Display>
+    <Description>US Dollar</Description>
+    <ExchangeRate>1</ExchangeRate>
+  </Currency>
+  <ContractType>Purchase</ContractType>
   <LocalTechnicalContact>
     <FirstName />
     <LastName />
@@ -100,7 +100,6 @@ export function createBlankOrderXml(): string {
   </LocalTechnicalContact>
   <Msrp>0</Msrp>
   <Dp>0</Dp>
-  <OpportunityID />
   <OrderAdministration>
     <InvoiceAddressType>GOM Partner</InvoiceAddressType>
     <InvoiceAccountNumber />
@@ -142,6 +141,7 @@ export function createBlankOrderXml(): string {
   <OrderNumber />
   <OrderStatus>Editing</OrderStatus>
   <OrderValueToGom>0</OrderValueToGom>
+  <OpportunityID />
   <PriceList>Partner</PriceList>
 </OrderData>`
 }

@@ -115,3 +115,79 @@ describe('every saved file stays openable by the configurator', () => {
     expect(modules.every((m) => m !== undefined)).toBe(true)
   })
 })
+
+/**
+ * Saving after an edit has to leave order.xml deserializable.
+ *
+ * `XmlSerializer` reads a class's members as a *sequence*, so an element out of
+ * declaration order — or one naming no member at all — fails the whole file.
+ * Three faults did that, all reported by GPC as "no Order-Part":
+ *
+ *   - `<Comments>` at the root. `OrderData` declares `Comment`; no reference
+ *     file has the plural, and the blank-order template wrote it into every new
+ *     order.
+ *   - Root elements appended at the end when the open file lacked them, instead
+ *     of being placed in declaration order.
+ *   - The XML declaration dropped and CRLF flattened to LF on save.
+ */
+describe('saving an edited order keeps it deserializable', () => {
+  const ROOT = (xml: string) =>
+    Array.from(
+      new DOMParser().parseFromString(xml, 'application/xml').documentElement.children,
+    ).map((e) => e.tagName)
+
+  it('keeps the declaration and CRLF', async () => {
+    const { createBlankOrderXml } = await import('../createBlankOrder.js')
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+
+    const blank = createBlankOrderXml()
+    const patched = patchOrderXml(blank, parseOrder(blank), [])
+
+    expect(patched.startsWith('<?xml version="1.0" encoding="utf-8"?>')).toBe(true)
+    expect(patched).toContain('\r\n')
+    expect(patched.replace(/\r\n/g, '')).not.toContain('\n')
+  })
+
+  it('never writes a root element that names no OrderData member', async () => {
+    const { createBlankOrderXml } = await import('../createBlankOrder.js')
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+
+    const blank = createBlankOrderXml()
+    const order = parseOrder(blank)
+    const patched = patchOrderXml(blank, { ...order, comments: 'a note' }, [])
+
+    expect(ROOT(patched)).toContain('Comment')
+    expect(ROOT(patched)).not.toContain('Comments')
+  })
+
+  it('adds a missing root element in declaration order, not at the end', async () => {
+    const { createBlankOrderXml } = await import('../createBlankOrder.js')
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+
+    // A file without CaseId — the shape that appended it after PriceList.
+    const stripped = createBlankOrderXml().replace(/ {2}<CaseId \/>\r?\n/, '')
+    expect(ROOT(stripped)).not.toContain('CaseId')
+
+    const patched = patchOrderXml(stripped, { ...parseOrder(stripped), caseId: 'CASE-1' }, [])
+    const root = ROOT(patched)
+
+    expect(root).toContain('CaseId')
+    expect(root.indexOf('CaseId')).toBeLessThan(root.indexOf('CleanOrder'))
+    expect(root.indexOf('CaseId')).toBeGreaterThan(root.indexOf('AttachedFiles'))
+  })
+
+  it('leaves an absent optional field absent when it has no value', async () => {
+    const { createBlankOrderXml } = await import('../createBlankOrder.js')
+    const { parseOrder } = await import('../parseOrder.js')
+    const { patchOrderXml } = await import('../patchOrder.js')
+
+    // .NET omits a null reference type; inventing an empty element differs from
+    // what the configurator would have written.
+    const stripped = createBlankOrderXml().replace(/ {2}<CaseId \/>\r?\n/, '')
+    const patched = patchOrderXml(stripped, { ...parseOrder(stripped), caseId: '' }, [])
+    expect(ROOT(patched)).not.toContain('CaseId')
+  })
+})

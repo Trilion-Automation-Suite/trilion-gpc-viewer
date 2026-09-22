@@ -18,6 +18,61 @@ import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, Tec
 // ---------------------------------------------------------------------------
 
 /**
+ * `OrderData`'s members in C# declaration order (2.9.8).
+ *
+ * `XmlSerializer` writes and reads a class's members as a *sequence*, so an
+ * element in the wrong place — or one that names no member at all — makes
+ * deserialization fail. GPC reports that as "This file has no Order-Part",
+ * which reads like a missing relationship and is really its catch-all for any
+ * OPC or deserialization error.
+ *
+ * Used to place a root element that the open file does not already have.
+ * Appending it instead, which is what this module used to do, produced exactly
+ * that failure.
+ */
+const ORDER_DATA_MEMBERS = [
+  'DependentListsData', 'FreeArticlesData', 'FreeListArticlesData', 'SupportArticlesData',
+  'AccountDetailsData', 'AttachedFiles', 'CaseId', 'CleanOrder', 'ReasonUnclean', 'Comment',
+  'CreationDate', 'Destination', 'DestinationNew', 'DiscountForCustomer',
+  'DiscountSplitPercentShare', 'DiscountSplitCurrencyShare', 'Distributor', 'Duration',
+  'EndDate', 'ExchangeRate', 'OrderUsedInWeaponProduction', 'FinalPriceForEndCustomer',
+  'FinalPriceForEndCustomerLocalCurrency', 'FinalPriceForEndCustomerWithHandlingFee',
+  'GomCurrency', 'Currency', 'DifferentLocalCurrencyIso', 'HandlingFee', 'HandlingFeeName',
+  'HasPriceOnRequest', 'HOMCenter', 'IsCustomerDiscountAcknowledged',
+  'DifferentFinalPriceForEndCustomerChecked', 'DirectSalesChecked', 'IsHandlingFeeApplicable',
+  'ContractType', 'LastModified', 'LocalTechnicalContact', 'Msrp', 'Dp', 'OrderAdministration',
+  'OrderDate', 'OrderGuid', 'OrderNumber', 'OrderStatus', 'OrderValueToGom',
+  'OrderValueToGomWithHandlingFee', 'OpportunityID', 'GomOrderNumber', 'PriceList',
+  'SaleInformations', 'SourceFileName', 'Username', 'FinalizeUsername', 'FinalizedDateTime',
+]
+
+/**
+ * Adds a root element in its declared position, or does nothing when there is
+ * no value to write.
+ *
+ * A null reference type is *omitted* by .NET, so creating an empty element for
+ * a field the user never filled in is not harmless — it is a difference from
+ * what the configurator would have written.
+ */
+function createRootChildInOrder(doc: Document, tagName: string, value: string): void {
+  if (value === '') return
+  const position = ORDER_DATA_MEMBERS.indexOf(tagName)
+  const created = doc.createElement(tagName)
+  created.textContent = value
+  if (position < 0) {
+    doc.documentElement.appendChild(created)
+    return
+  }
+  for (const child of Array.from(doc.documentElement.children)) {
+    if (ORDER_DATA_MEMBERS.indexOf(child.tagName) > position) {
+      doc.documentElement.insertBefore(created, child)
+      return
+    }
+  }
+  doc.documentElement.appendChild(created)
+}
+
+/**
  * Writes a value into an element, clearing any `xsi:nil` first.
  *
  * `xsi:nil="true"` means "this value is null". Leaving it in place while also
@@ -37,10 +92,7 @@ function setDocTag(doc: Document, tagName: string, value: string): void {
   if (el) {
     writeValue(el, value)
   } else {
-    // Safety: create if absent (shouldn't happen for known fields)
-    const created = doc.createElement(tagName)
-    created.textContent = value
-    doc.documentElement.appendChild(created)
+    createRootChildInOrder(doc, tagName, value)
   }
 }
 
@@ -52,9 +104,7 @@ function setRootChildTag(doc: Document, tagName: string, value: string): void {
       return
     }
   }
-  const created = doc.createElement(tagName)
-  created.textContent = value
-  doc.documentElement.appendChild(created)
+  createRootChildInOrder(doc, tagName, value)
 }
 
 /** Sets the text content of a direct child element with tagName inside parent. */
@@ -79,7 +129,9 @@ function patchHeaderFields(doc: Document, order: OrderSummary): void {
   setDocTag(doc, 'OrderNumber', order.orderNumber)
   setDocTag(doc, 'CaseId', order.caseId)
   setDocTag(doc, 'OpportunityID', order.opportunityId)  // note: ID not Id
-  setRootChildTag(doc, 'Comments', order.comments)
+  // OrderData declares `Comment`; `Comments` names no member and makes the
+  // whole file fail to deserialize.
+  setRootChildTag(doc, 'Comment', order.comments)
 }
 
 function patchAccountDetails(doc: Document, account: AccountDetails): void {
@@ -459,5 +511,15 @@ export function patchOrderXml(originalXml: string, order: OrderSummary, original
   insertLicenseItems(doc, order.items.filter(i => i.isNew === true && i.itemType === 'dependent'), order.items)
   patchLicenseUserFields(doc, order.items)
 
-  return new XMLSerializer().serializeToString(doc)
+  // XMLSerializer drops the declaration and writes LF; the configurator writes
+  // `<?xml version="1.0" encoding="utf-8"?>` followed by CRLF throughout, and
+  // every reference file has both. Restored here so a saved file keeps the
+  // shape GPC produces.
+  const xml = new XMLSerializer().serializeToString(doc)
+  const withDeclaration = xml.startsWith('<?xml')
+    ? xml
+    : `${XML_DECLARATION}\n${xml}`
+  return withDeclaration.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n')
 }
+
+const XML_DECLARATION = '<?xml version="1.0" encoding="utf-8"?>'
