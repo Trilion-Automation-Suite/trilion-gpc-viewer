@@ -140,7 +140,19 @@ class Parser {
     if (selfClosing) {
       return { name, value: nil ? { kind: 'nil' } : { kind: 'element', type, members: [] } }
     }
-    if (nil) throw new Error(`orderXml: <${name}> is xsi:nil but not self-closing`)
+
+    if (nil) {
+      // `<X xsi:nil="true">Customer</X>` contradicts itself, and files in the
+      // wild contain it — this app wrote it until v1.0.1, setting a value
+      // without clearing the attribute. GPC believes the attribute and drops
+      // the text, so the value was already gone as far as the configurator was
+      // concerned. Reading it the same way keeps our interpretation and GPC's
+      // identical, and writing it back emits a clean self-closing element, so
+      // opening and saving repairs the file.
+      this.skipTo(`</${name}>`)
+      this.expectClose(name)
+      return { name, value: { kind: 'nil' } }
+    }
 
     // Look at what follows: child element, or character data.
     const next = this.xml.indexOf('<', this.at)
@@ -171,6 +183,13 @@ class Parser {
     }
     this.expectClose(name)
     return { name, value: { kind: 'element', type, members } }
+  }
+
+  /** Advances to the next occurrence of `marker`, leaving `at` on it. */
+  private skipTo(marker: string): void {
+    const found = this.xml.indexOf(marker, this.at)
+    if (found < 0) throw new Error(`orderXml: unterminated element, expected ${marker}`)
+    this.at = found
   }
 
   private expectClose(name: string): void {
