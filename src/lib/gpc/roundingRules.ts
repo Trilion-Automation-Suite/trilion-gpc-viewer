@@ -115,6 +115,8 @@ export function selectRule(
  * so an unmatched value is not left at whatever scale the conversion gave it.
  */
 const WHOLE_UNIT = parseDecimal('1')
+const ZERO = parseDecimal('0')
+const ONE = parseDecimal('1')
 
 /** Applies the catalog's rounding, falling back to the whole unit. */
 export function applyRounding(
@@ -128,4 +130,43 @@ export function applyRounding(
   return rule
     ? roundToQuantum(value, rule.roundTo, rule.mode)
     : roundToQuantum(value, WHOLE_UNIT, 'commercial')
+}
+
+
+/**
+ * Distributor discount by product group and price list.
+ *
+ * This is what actually sets the distributor price. Deriving it from the
+ * catalog's own euro Dp/Msrp pair looks right and is not: that pair is itself
+ * rounded, so the quotient is an approximation. Consumables on the Partner list
+ * discount 30%, but the euro prices 193/275 give 0.70182 — enough to turn a
+ * 217 into a 218.
+ */
+export function scanDiscounts(configXml: string): Map<string, Dec> {
+  const section = sliceSection(configXml, 'DiscountsData')
+  if (!section) return new Map()
+
+  const out = new Map<string, Dec>()
+  const open = '<Discount>'
+  const close = '</Discount>'
+  let at = 0
+  for (;;) {
+    const start = section.indexOf(open, at)
+    if (start < 0) break
+    const end = section.indexOf(close, start + open.length)
+    if (end < 0) break
+    const block = section.slice(start + open.length, end)
+    at = end + close.length
+    const factor = parseDecimalOrNull(tagText(block, 'Factor'))
+    // Rows with no discount defined carry a decimal.MinValue sentinel rather
+    // than being absent, e.g. -792281625142643375935439503.35. A real discount
+    // is a fraction of the list price, so anything outside 0..1 is not one.
+    if (!factor || compare(factor, ZERO) < 0 || compare(factor, ONE) >= 0) continue
+    out.set(discountKey(tagText(block, 'MPG'), tagText(block, 'PriceListName')), factor)
+  }
+  return out
+}
+
+export function discountKey(mpg: string, priceListName: string): string {
+  return `${mpg}\u0000${priceListName}`
 }

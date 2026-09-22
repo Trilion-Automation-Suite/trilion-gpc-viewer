@@ -20,7 +20,7 @@ import { readPdbConfig } from './blankOrder.ts'
 import type { Dec } from './decimal.ts'
 import { add, divide, formatDecimal, fromInt, isZero, multiply, parseDecimalOrNull } from './decimal.ts'
 import type { RoundingRule } from './roundingRules.ts'
-import { applyRounding, scanRoundingRules } from './roundingRules.ts'
+import { applyRounding, discountKey, scanRoundingRules, scanDiscounts } from './roundingRules.ts'
 
 const ARTICLES_FILTER_PREFIX = '<Articles>'
 
@@ -116,7 +116,8 @@ export function priceArticle(
   priceListName: string,
   exchangeRate: Dec,
   rules: RoundingRule[] = [],
-  currencyIso = ''
+  currencyIso = '',
+  discounts?: Map<string, Dec>
 ): ArticlePricing {
   const rows = listItems(article, 'ArticlePriceLists')
   const row = rows.find((r) => field(r, 'Name') === priceListName)
@@ -129,13 +130,18 @@ export function priceArticle(
 
   const msrp = applyRounding(rules, multiply(msrpEur, exchangeRate), 'MSRP', currencyIso, mpg)
 
-  // Normally the distributor price follows the rounded list price times the
-  // price list's discount ratio. A promotional article can have a list price of
-  // zero and a real distributor price, and there the ratio does not exist — the
-  // euro figure is converted directly instead.
+  // The distributor price is the rounded list price less the discount for this
+  // product group and price list. Falling back to the catalog's own euro
+  // quotient when no discount is listed — that quotient is itself rounded, so
+  // it is an approximation and only used when there is nothing better. A
+  // promotional article can have a zero list price and a real distributor
+  // price, where neither applies and the euro figure converts directly.
+  const discount = discounts?.get(discountKey(mpg, priceListName))
   const dpRaw = isZero(msrpEur)
     ? multiply(dpEur, exchangeRate)
-    : multiply(msrp, divide(dpEur, msrpEur))
+    : discount
+      ? multiply(msrp, add(fromInt(1), { unscaled: -discount.unscaled, scale: discount.scale }))
+      : multiply(msrp, divide(dpEur, msrpEur))
   const dp = applyRounding(rules, dpRaw, 'DP', currencyIso, mpg)
   return { dp, msrp }
 }
@@ -203,7 +209,9 @@ export function addFreeListLine(
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
 
-  const rules = scanRoundingRules(pdbConfigXml(pdb))
+  const configText = pdbConfigXml(pdb)
+  const rules = scanRoundingRules(configText)
+  const discounts = scanDiscounts(configText)
   const iso = orderCurrencyIso(order)
 
   let totalDp: Dec = fromInt(0)
@@ -211,7 +219,7 @@ export function addFreeListLine(
   const lines: Array<[string, OrderValue]> = []
   articles.forEach((article, i) => {
     const each = options.amounts?.[i] ?? amount
-    const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, iso)
+    const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, iso, discounts)
     const count = fromInt(each)
     totalDp = add(totalDp, multiply(dp, count))
     totalMsrp = add(totalMsrp, multiply(msrp, count))
@@ -459,8 +467,11 @@ export function addFreeArticle(
   if (!priceListName) throw new Error('addItem: order has no PriceList')
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
-  const rules = scanRoundingRules(pdbConfigXml(pdb))
-  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, orderCurrencyIso(order))
+  const configText = pdbConfigXml(pdb)
+  const rules = scanRoundingRules(configText)
+  const { dp, msrp } = priceArticle(
+    article, priceListName, exchangeRate, rules, orderCurrencyIso(order), scanDiscounts(configText)
+  )
   const count = fromInt(amount)
 
   const screen = el([
@@ -574,8 +585,11 @@ export function addSupportArticle(
   if (!priceListName) throw new Error('addItem: order has no PriceList')
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
-  const rules = scanRoundingRules(pdbConfigXml(pdb))
-  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, orderCurrencyIso(order))
+  const configText = pdbConfigXml(pdb)
+  const rules = scanRoundingRules(configText)
+  const { dp, msrp } = priceArticle(
+    article, priceListName, exchangeRate, rules, orderCurrencyIso(order), scanDiscounts(configText)
+  )
 
   const screen = supportScreen(order, config, options)
   const entry = el([

@@ -19,7 +19,7 @@ import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
 import { readPdbConfig } from './blankOrder.ts'
 import type { Dec } from './decimal.ts'
 import { add, fromInt, multiply } from './decimal.ts'
-import { scanRoundingRules } from './roundingRules.ts'
+import { scanDiscounts, scanRoundingRules } from './roundingRules.ts'
 import { decimalString, findArticle, priceArticle } from './addItem.ts'
 
 const txt = (value: string): OrderValue => ({ kind: 'text', type: null, value })
@@ -132,7 +132,9 @@ export function addDependentList(
   const priceListName = options.priceListName ?? orderText(order, 'PriceList') ?? ''
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const currencyIso = options.currencyIso ?? orderCurrencyIso(order)
-  const rules = scanRoundingRules(configXml(pdb))
+  const configText = configXml(pdb)
+  const rules = scanRoundingRules(configText)
+  const discounts = scanDiscounts(configText)
 
   const chosen = new Map<string, DependentListSelection>()
   for (const s of options.selections ?? []) chosen.set(`${s.sectionName}\u0000${s.articleName}`, s)
@@ -159,7 +161,7 @@ export function addDependentList(
       // An option with no catalog article has no price at all, which is not the
       // same as a price of zero: the configurator writes xsi:nil for the first
       // and 0 for the second, and selector rows are genuinely zero-priced.
-      const priced = optionPrice(config, articleName, priceListName, exchangeRate, rules, currencyIso)
+      const priced = optionPrice(config, articleName, priceListName, exchangeRate, rules, currencyIso, discounts)
       if (priced && amount !== '0') {
         const count = fromInt(Number(amount) || 0)
         totalMsrp = add(totalMsrp, multiply(priced.msrp, count))
@@ -231,10 +233,11 @@ function optionPrice(
   priceListName: string,
   exchangeRate: Dec,
   rules: ReturnType<typeof scanRoundingRules>,
-  currencyIso: string
+  currencyIso: string,
+  discounts: ReturnType<typeof scanDiscounts>
 ): { msrp: Dec; dp: Dec } | null {
   try {
-    return priceArticle(findArticle(config, articleName), priceListName, exchangeRate, rules, currencyIso)
+    return priceArticle(findArticle(config, articleName), priceListName, exchangeRate, rules, currencyIso, discounts)
   } catch {
     return null
   }
