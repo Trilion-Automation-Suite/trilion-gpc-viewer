@@ -38,8 +38,15 @@ export interface GpcFilePins {
   currenciesLastUpdate?: string
 }
 
+/** The three relationship Ids `_rels/.rels` carries — all that building it needs. */
+export interface RelationshipIds {
+  versionRelId: string
+  configRelId: string
+  orderRelId: string
+}
+
 /** `_rels/.rels` — BOM, single line, three relationships in this exact order. */
-export function buildRels(pins: GpcFilePins): Uint8Array {
+export function buildRels(pins: RelationshipIds): Uint8Array {
   const xml =
     `${BOM}<?xml version="1.0" encoding="utf-8"?>` +
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +

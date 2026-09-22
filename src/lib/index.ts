@@ -4,6 +4,9 @@ import { unpackOpc } from './unpack.js'
 import { parseOrder } from './parseOrder.js'
 import { buildArticlePriceMap, parseCurrencyRates } from './parseConfig.js'
 import { buildLicenseCatalog, buildLicenseCatalogFromConfig } from './parseLicenseCatalog.js'
+import { METHOD_DEFLATE, METHOD_STORED, readContainer, writeContainer } from './gpc/container.ts'
+import type { GpcEntry } from './gpc/container.ts'
+import { buildContentTypes, buildRels } from './gpc/writeGpcFile.ts'
 import { createBlankOrderXml } from './createBlankOrder.js'
 
 /** Mutates article rows in-place with prices from the config.xml price map. */
@@ -32,6 +35,13 @@ function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof bu
  * SourceFileName (e.g. "PDB285_01-2026"). Absent on very old files, which
  * predate the field.
  */
+/** `"R" + Guid.NewGuid().ToString("N").Substring(0,16)`, fresh on every save. */
+function relationshipId(): string {
+  const bytes = new Uint8Array(8)
+  crypto.getRandomValues(bytes)
+  return 'R' + [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 /** `ParametersData/VersionName` — the catalog's own name for itself. */
 function readVersionName(configXml: string): string {
   return /<VersionName>([^<]*)<\/VersionName>/.exec(configXml)?.[1]?.trim() ?? ''
@@ -159,65 +169,47 @@ export async function createNewOrder(
     : buildLicenseCatalog(orderXml)
   const currencyRates = pdb ? parseCurrencyRates(pdb.configXml) : {}
 
-  const JSZip = (await import('jszip')).default
-  let zip: InstanceType<typeof JSZip>
+  // The package is assembled with the byte-exact container writer, not a
+  // general-purpose zip library. GPC only opens a file whose ZIP matches what
+  // .NET's System.IO.Packaging writes, and the previous implementation here
+  // produced one it rejected: every entry stored rather than deflated, no OPC
+  // growth hint, and a directory-removal pass that could take `_rels/.rels`
+  // with it. That is the failure this project exists to fix.
+  const encoder = new TextEncoder()
+  const parts = new Map<string, Uint8Array>()
 
   if (pdb?.rawBuffer) {
-    // Clone the PDB's ZIP (created by GPC) — preserves exact OPC structure.
-    zip = await JSZip.loadAsync(pdb.rawBuffer)
-  } else {
-    // No raw buffer available — build from cached strings.
-    zip = new JSZip()
-    if (pdb?.configXml) zip.file('config.xml', pdb.configXml)
-    if (pdb?.versionXml) zip.file('version.xml', pdb.versionXml)
+    // Carry the catalog over from the product database as-is.
+    const source = await readContainer(new Uint8Array(pdb.rawBuffer))
+    for (const entry of source.entries) parts.set(entry.name, entry.data)
+  }
+  if (pdb?.configXml && !parts.has('config.xml')) parts.set('config.xml', encoder.encode(pdb.configXml))
+  if (pdb?.versionXml && !parts.has('version.xml')) parts.set('version.xml', encoder.encode(pdb.versionXml))
+
+  // The order and both OPC parts are always written fresh, so a new file never
+  // inherits a stale or broken manifest.
+  parts.set('order.xml', encoder.encode(orderXml))
+  parts.set('_rels/.rels', buildRels({
+    versionRelId: relationshipId(),
+    configRelId: relationshipId(),
+    orderRelId: relationshipId(),
+  }))
+  parts.set('[Content_Types].xml', buildContentTypes())
+
+  const now = new Date()
+  const entries: GpcEntry[] = []
+  for (const name of ['version.xml', '_rels/.rels', 'config.xml', 'order.xml', '[Content_Types].xml']) {
+    const data = parts.get(name)
+    if (!data) continue
+    entries.push({ name, data, method: name === '_rels/.rels' ? METHOD_STORED : METHOD_DEFLATE })
   }
 
-  // Inject order.xml
-  zip.file('order.xml', orderXml)
-
-  // Update _rels/.rels — read existing relationships and add xml/gomorder.
-  let existingRels = ''
-  try {
-    const relsFile = zip.file('_rels/.rels')
-    if (relsFile) {
-      existingRels = await relsFile.async('string')
-    }
-  } catch { /* no existing rels */ }
-
-  if (existingRels && existingRels.includes('xml/gomorder')) {
-    // Already has order relationship (shouldn't happen for PDB, but safe)
-  } else if (existingRels && existingRels.includes('</Relationships>')) {
-    // Inject the gomorder relationship before the closing tag
-    existingRels = existingRels.replace(
-      '</Relationships>',
-      '<Relationship Type="xml/gomorder" Target="/order.xml" Id="R_order" /></Relationships>'
-    )
-    zip.file('_rels/.rels', existingRels, { createFolders: false })
-  } else {
-    // No existing rels — create from scratch
-    const rels = [
-      '<Relationship Type="xml/gomorder" Target="/order.xml" Id="R1" />',
-      pdb?.configXml ? '<Relationship Type="xml/gomconfig" Target="/config.xml" Id="R2" />' : '',
-      pdb?.versionXml ? '<Relationship Type="xml/gomversion" Target="/version.xml" Id="R3" />' : '',
-    ].filter(Boolean).join('')
-    zip.file('_rels/.rels', `<?xml version="1.0" encoding="utf-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`, { createFolders: false })
-  }
-
-  // Ensure [Content_Types].xml has the rels content type (PDB might not have it)
-  let contentTypes = ''
-  try {
-    const ctFile = zip.file('[Content_Types].xml')
-    if (ctFile) contentTypes = await ctFile.async('string')
-  } catch { /* */ }
-  if (!contentTypes.includes('openxmlformats-package.relationships')) {
-    zip.file('[Content_Types].xml', '<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="text/xml" /><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" /></Types>')
-  }
-
-  // Remove spurious directory entries
-  const dirs = Object.keys(zip.files).filter(n => zip.files[n].dir)
-  for (const d of dirs) zip.remove(d)
-
-  const zipBuffer = await zip.generateAsync({ type: 'arraybuffer' })
+  const zip = await writeContainer({
+    entries,
+    dosTime: (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1),
+    dosDate: ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate(),
+  })
+  const zipBuffer = zip.buffer as ArrayBuffer
 
   return {
     order,
