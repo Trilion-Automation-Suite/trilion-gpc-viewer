@@ -361,7 +361,16 @@ export function findSupportItem(config: ElementValue): ElementValue {
   throw new Error(`addItem: PDB has no ${SUPPORT_ITEM_TYPE} configuration item`)
 }
 
+export type SupportList = 'HardwareSupportArticles' | 'SoftwareSupportArticles'
+
 export interface SupportContract {
+  /**
+   * Which support list the article goes in. The `<software-support>` tag is the
+   * default, but it is only a default: a dongle carries no tag at all and still
+   * belongs in SoftwareSupportArticles because that is where the operator put
+   * it. Naming the list explicitly overrides the tag.
+   */
+  list?: SupportList
   /** Dongle or sensor serial the agreement covers. */
   sensorSnDongleId?: string
   startNewContract?: string
@@ -389,7 +398,8 @@ export function addSupportArticle(
 ): OrderDocument {
   const config = readPdbConfig(pdb)
   const article = findArticle(config, articleName)
-  if (!isSupportArticle(article)) {
+  const listName: SupportList = options.list ?? 'SoftwareSupportArticles'
+  if (!options.list && !isSupportArticle(article)) {
     throw new Error(`addItem: ${JSON.stringify(articleName)} is not a software-support article`)
   }
 
@@ -424,8 +434,8 @@ export function addSupportArticle(
     ...(options.startNewContract ? [['StartNewContract', txt(options.startNewContract)] as [string, OrderValue]] : []),
   ])
 
-  const list = sub(screen, 'SoftwareSupportArticles')
-  if (!list) throw new Error('addItem: support screen has no SoftwareSupportArticles')
+  const list = sub(screen, listName)
+  if (!list) throw new Error(`addItem: support screen has no ${listName}`)
   list.members.push({ name: 'SupportArticle', value: entry })
 
   retotalSupportScreen(screen)
@@ -497,7 +507,7 @@ export function addCatalogArticle(
   options: AddArticleOptions & SupportContract = {}
 ): OrderDocument {
   const article = findArticle(readPdbConfig(pdb), articleName)
-  return isSupportArticle(article)
+  return options.list || isSupportArticle(article)
     ? addSupportArticle(order, pdb, articleName, options)
     : addArticle(order, pdb, articleName, options)
 }
