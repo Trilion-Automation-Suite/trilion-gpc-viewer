@@ -17,6 +17,10 @@ import type { GpcContainer } from './container.ts'
 import type { ElementValue, OrderDocument, OrderMember, OrderValue } from './orderXml.ts'
 import { setMember } from './orderXml.ts'
 import { readPdbConfig } from './blankOrder.ts'
+import type { Dec } from './decimal.ts'
+import { add, divide, formatDecimal, fromInt, isZero, multiply, parseDecimalOrNull } from './decimal.ts'
+import type { RoundingRule } from './roundingRules.ts'
+import { applyRounding, scanRoundingRules } from './roundingRules.ts'
 
 const ARTICLES_FILTER_PREFIX = '<Articles>'
 
@@ -88,38 +92,54 @@ export function findFreeListItem(config: ElementValue, article: ElementValue): E
 // ── pricing ───────────────────────────────────────────────────────────────────
 
 /**
- * Catalog prices are in euro; an order carries them in its own currency, scaled
- * by the currency row's exchange rate. Confirmed against reference files: the
- * order's price-list row times the currency's exchange rate reproduces the
- * recorded Dp and Msrp exactly.
+ * Converting a catalog price into an order's currency.
+ *
+ * Not a single multiplication, and the difference is visible in the bytes. The
+ * configurator rounds the list price per the catalog's rounding rules, then
+ * derives the distributor price from *that rounded figure* times the price
+ * list's own discount ratio, and rounds again:
+ *
+ *   msrp = round(msrp_eur x rate)
+ *   dp   = round(msrp x (dp_eur / msrp_eur))
+ *
+ * Computing dp independently from dp_eur gives answers that are close and
+ * wrong — 3781 where the file says 3776 — because the rounding applied to the
+ * list price has to flow into the distributor price.
  */
 export interface ArticlePricing {
-  dp: number
-  msrp: number
+  dp: Dec
+  msrp: Dec
 }
 
 export function priceArticle(
   article: ElementValue,
   priceListName: string,
-  exchangeRate: number
+  exchangeRate: Dec,
+  rules: RoundingRule[] = [],
+  currencyIso = ''
 ): ArticlePricing {
   const rows = listItems(article, 'ArticlePriceLists')
   const row = rows.find((r) => field(r, 'Name') === priceListName)
   if (!row) {
     throw new Error(`addItem: article has no price list ${JSON.stringify(priceListName)}`)
   }
-  const dp = Number(field(row, 'Dp') ?? '0')
-  const msrp = Number(field(row, 'Msrp') ?? '0')
-  return { dp: dp * exchangeRate, msrp: msrp * exchangeRate }
+  const mpg = field(article, 'MPG') ?? ''
+  const msrpEur = parseDecimalOrNull(field(row, 'Msrp')) ?? fromInt(0)
+  const dpEur = parseDecimalOrNull(field(row, 'Dp')) ?? fromInt(0)
+
+  const msrp = applyRounding(rules, multiply(msrpEur, exchangeRate), 'MSRP', currencyIso, mpg)
+  const ratio = isZero(msrpEur) ? fromInt(0) : divide(dpEur, msrpEur)
+  const dp = applyRounding(rules, multiply(msrp, ratio), 'DP', currencyIso, mpg)
+  return { dp, msrp }
 }
 
 /**
- * .NET decimal formatting: no exponent, no trailing-zero padding beyond the
- * value's own scale. `decimals` forces a scale where the reference files show
- * one — .NET preserves `decimal` scale through arithmetic, so some fields carry
- * trailing zeros a plain number would drop.
+ * Formats a value for order.xml. A `Dec` renders at its own scale, which is how
+ * `2610` and `12.3` and `1771.0` each come out right; a plain number is still
+ * accepted for the few places that have not moved to decimals yet.
  */
-export function decimalString(value: number, decimals = 0): string {
+export function decimalString(value: Dec | number, decimals = 0): string {
+  if (typeof value !== 'number') return formatDecimal(value)
   const rounded = Math.round(value * 10 ** decimals) / 10 ** decimals
   return decimals > 0 ? rounded.toFixed(decimals) : String(rounded)
 }
@@ -130,7 +150,7 @@ export interface AddArticleOptions {
   /** Defaults to the order's own `PriceList`. */
   priceListName?: string
   /** Defaults to the order's own `Currency/ExchangeRate`. */
-  exchangeRate?: number
+  exchangeRate?: Dec
   amount?: number
 }
 
@@ -153,9 +173,11 @@ export function addArticle(
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
 
-  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate)
-  const totalDp = dp * amount
-  const totalMsrp = msrp * amount
+  const rules = scanRoundingRules(pdbConfigXml(pdb))
+  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, orderCurrencyIso(order))
+  const count = fromInt(amount)
+  const totalDp = multiply(dp, count)
+  const totalMsrp = multiply(msrp, count)
 
   const screen = el([
     ['ConfigurationItem', clone(item)],
@@ -193,10 +215,23 @@ function orderField(order: OrderDocument, name: string): string | null {
   return v && v.kind === 'text' ? v.value : null
 }
 
-function orderExchangeRate(order: OrderDocument): number {
+function orderExchangeRate(order: OrderDocument): Dec {
   const currency = order.root.members.find((m) => m.name === 'Currency')?.value
   if (!currency || currency.kind !== 'element') throw new Error('addItem: order has no Currency')
-  return Number(field(currency, 'ExchangeRate') ?? '1')
+  return parseDecimalOrNull(field(currency, 'ExchangeRate')) ?? fromInt(1)
+}
+
+/** The order's currency, which selects the rounding rules that apply. */
+function orderCurrencyIso(order: OrderDocument): string {
+  const currency = order.root.members.find((m) => m.name === 'Currency')?.value
+  return currency && currency.kind === 'element' ? (field(currency, 'Iso') ?? '') : ''
+}
+
+/** The raw config.xml inside a catalog container. */
+function pdbConfigXml(pdb: GpcContainer): string {
+  const entry = pdb.entries.find((e) => e.name === 'config.xml')
+  if (!entry) throw new Error('addItem: catalog has no config.xml')
+  return new TextDecoder('utf-8').decode(entry.data)
 }
 
 /** Line items are numbered from 1 across every screen-data list. */
@@ -407,7 +442,8 @@ export function addSupportArticle(
   if (!priceListName) throw new Error('addItem: order has no PriceList')
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
-  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate)
+  const rules = scanRoundingRules(pdbConfigXml(pdb))
+  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, orderCurrencyIso(order))
 
   const screen = supportScreen(order, config, options)
   const entry = el([
@@ -474,16 +510,16 @@ function supportScreen(order: OrderDocument, config: ElementValue, options: Supp
 
 /** Support totals are the sum of both article lists, times each amount. */
 function retotalSupportScreen(screen: ElementValue): void {
-  let msrp = 0
-  let dp = 0
+  let msrp: Dec = fromInt(0)
+  let dp: Dec = fromInt(0)
   for (const listName of ['HardwareSupportArticles', 'SoftwareSupportArticles']) {
     const list = sub(screen, listName)
     if (!list) continue
     for (const m of list.members) {
       if (m.value.kind !== 'element') continue
-      const amount = Number(field(m.value, 'Amount') ?? '1')
-      msrp += Number(field(m.value, 'Msrp') ?? '0') * amount
-      dp += Number(field(m.value, 'Dp') ?? '0') * amount
+      const amount = fromInt(Number(field(m.value, 'Amount') ?? '1'))
+      msrp = add(msrp, multiply(parseDecimalOrNull(field(m.value, 'Msrp')) ?? fromInt(0), amount))
+      dp = add(dp, multiply(parseDecimalOrNull(field(m.value, 'Dp')) ?? fromInt(0), amount))
     }
   }
   setText(screen, 'TotalMsrp', decimalString(msrp))

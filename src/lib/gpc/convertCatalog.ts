@@ -18,6 +18,8 @@
 import type { GpcContainer } from './container.ts'
 import { readPdbConfig } from './blankOrder.ts'
 import { decimalString, priceArticle, recalculateOrder } from './addItem.ts'
+import { fromInt, parseDecimalOrNull } from './decimal.ts'
+import { scanRoundingRules } from './roundingRules.ts'
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
 
 /** `AbasNr` uses this as "no value"; it must not be treated as a key. */
@@ -226,9 +228,14 @@ export function convertOrderToCatalog(
 
   if (updateCurrency) moveToCurrentCurrency(order, config)
   const priceList = text(order.root, 'PriceList')
-  const rate = Number(text(sub(order.root, 'Currency'), 'ExchangeRate') ?? '1')
+  const currency = sub(order.root, 'Currency')
+  const rate = parseDecimalOrNull(text(currency, 'ExchangeRate')) ?? fromInt(1)
+  const currencyIso = text(currency, 'Iso') ?? ''
+  // The new catalog's rounding rules, not the old order's: prices move when a
+  // catalog changes its bands, and converting has to follow the new ones.
+  const rules = scanRoundingRules(configXml(targetPdb))
 
-  convertNode(order.root, { index, report, reprice, priceList, rate })
+  convertNode(order.root, { index, report, reprice, priceList, rate, rules, currencyIso })
 
   const version = index.versionName
   if (version) setText(order.root, 'SourceFileName', version)
@@ -248,7 +255,16 @@ interface Ctx {
   report: ConversionReport
   reprice: boolean
   priceList: string | null
-  rate: number
+  rate: import('./decimal.ts').Dec
+  rules: import('./roundingRules.ts').RoundingRule[]
+  currencyIso: string
+}
+
+/** The raw config.xml inside a catalog container. */
+function configXml(pdb: GpcContainer): string {
+  const entry = pdb.entries.find((e) => e.name === 'config.xml')
+  if (!entry) throw new Error('convertCatalog: catalog has no config.xml')
+  return new TextDecoder('utf-8').decode(entry.data)
 }
 
 /**
@@ -383,7 +399,7 @@ function repriceLine(parent: ElementValue, article: ElementValue, label: string 
 
   let priced
   try {
-    priced = priceArticle(article, ctx.priceList, ctx.rate)
+    priced = priceArticle(article, ctx.priceList, ctx.rate, ctx.rules, ctx.currencyIso)
   } catch {
     // The new catalog may not carry this order's price list for this article.
     ctx.report.issues.push({

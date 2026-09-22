@@ -24,6 +24,10 @@ const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
       </ConfigurationItem>
     </ConfigurationItems>
   </ConfigurationItemsData>
+  <RoundingRules>
+    <RoundingRule><Rule>1 - commercial Rounding</Rule><Condition>MSRP</Condition><CurrencyIso>EUR</CurrencyIso><MPG>*</MPG><RangeFrom>0</RangeFrom><RangeTo>79228162514264337593543950335</RangeTo><RoundTo>1</RoundTo></RoundingRule>
+    <RoundingRule><Rule>1 - commercial Rounding</Rule><Condition>DP</Condition><CurrencyIso>EUR</CurrencyIso><MPG>*</MPG><RangeFrom>0</RangeFrom><RangeTo>79228162514264337593543950335</RangeTo><RoundTo>1</RoundTo></RoundingRule>
+  </RoundingRules>
   <ArticlesData>
     <Articles>
       <Article>
