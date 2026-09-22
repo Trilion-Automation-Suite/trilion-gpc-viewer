@@ -4,6 +4,10 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
 import type { ArticleCatalogEntry } from './lib/parseConfig.ts'
 import { buildArticleCatalog } from './lib/parseConfig.ts'
+import { parseOrder } from './lib/parseOrder.ts'
+import { parseOrderXml, serializeOrderXml } from './lib/gpc/orderXml.ts'
+import { addCatalogArticle } from './lib/gpc/addItem.ts'
+import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
 import { loadPdbCache, addPdbToLibrary, listPdbLibrary, getPdbFromLibrary, pdbVersionName } from './lib/pdbCache.ts'
@@ -183,38 +187,39 @@ export function App() {
     setIsDirty(true)
   }, [])
 
+  /**
+   * Adds a product through the catalog model rather than by fabricating a line
+   * item from the picker's fields.
+   *
+   * The old path invented a ConfigurationItem named after the article's MPG,
+   * which put support articles under "SMA (Stand-alone / Extension)" instead of
+   * the catalog's "Software Maintenance Agreement". addCatalogArticle clones the
+   * real catalog item the article belongs to and nests the article inside it,
+   * which is what GPC itself does.
+   *
+   * The insertion happens here, against order.xml, rather than at save time, so
+   * what the table shows is what the file contains.
+   */
   const handleAddProduct = useCallback((fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => {
-    setOrder(prev => {
-      if (!prev) return null
-      // Convert prices from article currency to order currency if needed
-      const rates = state.status === 'loaded' ? state.result.currencyRates : {}
-      let { unitMsrp, unitDp } = fields
-      if (fields.currency && prev.currency && fields.currency !== prev.currency) {
-        const sourceRate = rates[fields.currency] ?? 1
-        const targetRate = rates[prev.currency] ?? 1
-        const factor = targetRate / sourceRate
-        if (unitMsrp !== null) unitMsrp = Math.round(unitMsrp * factor * 100) / 100
-        if (unitDp !== null) unitDp = Math.round(unitDp * factor * 100) / 100
-      }
-      const no = nextItemNo(prev.items)
-      const newItem: ConfigItem = {
-        no,
-        label: `Configuration item ${no}`,
-        category: fields.category,
-        name: fields.name,
-        systemType: '',
-        totalMsrp: null,
-        totalDp: null,
-        discountOverride: null,
-        isHidden: false,
-        isSub: false,
-        itemType: 'free',
-        isNew: true,
-        sections: [{ name: '', articles: [{ name: fields.name, amount: fields.amount, unit: fields.unit || 'pcs', priceOnRequest: false, unitMsrp, unitDp, sapNr: fields.sapNr }], comments: '' }],
-      }
-      return { ...prev, items: [...prev.items, newItem] }
-    })
-    setIsDirty(true)
+    if (state.status !== 'loaded' || !state.result.configXml) {
+      setState({
+        status: 'error',
+        message: 'Cannot add a product without the product database this order was built on.',
+      })
+      return
+    }
+    try {
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      addCatalogArticle(doc, catalogContainer(state.result.configXml), fields.name, {
+        amount: fields.amount,
+      })
+      const orderXml = new TextDecoder().decode(serializeOrderXml(doc))
+      setState({ status: 'loaded', result: { ...state.result, rawOrderXml: orderXml } })
+      setOrder(parseOrder(orderXml))
+      setIsDirty(true)
+    } catch (err) {
+      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+    }
   }, [state])
 
   const handleAddLicense = useCallback((fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => {
