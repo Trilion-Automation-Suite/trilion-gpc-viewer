@@ -597,3 +597,41 @@ describe('patchOrderXml — add free article item matches GPC reference format',
     expect(freeArt!.querySelector('Article > Unit')?.textContent).toBe('days')
   })
 })
+
+/** ORDER_XML with InvoiceAddressType nulled, and the xsi namespace it needs. */
+function withNilInvoiceAddressType(): string {
+  return ORDER_XML
+    .replace('<OrderData', '<OrderData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"')
+    .replace(
+      '<InvoiceAddressType>Standard</InvoiceAddressType>',
+      '<InvoiceAddressType xsi:nil="true" />'
+    )
+}
+
+describe('xsi:nil handling', () => {
+  // GPC believes xsi:nil over any text beside it, so a value written into an
+  // element that is still marked nil is discarded on the next open. This was a
+  // silent data loss for every nullable field: address types, dates, discounts.
+  it('clears xsi:nil when a nullable field is given a value', () => {
+    const xml = withNilInvoiceAddressType()
+    const order = parseOrder(xml)
+    const patched = patchOrderXml(xml, {
+      ...order,
+      administration: { ...order.administration, invoiceAddressType: 'Customer' },
+    }, [])
+
+    expect(patched).toContain('<InvoiceAddressType>Customer</InvoiceAddressType>')
+    expect(patched).not.toMatch(/<InvoiceAddressType[^>]*xsi:nil/)
+  })
+
+  it('leaves xsi:nil alone when the field stays empty', () => {
+    const xml = withNilInvoiceAddressType()
+    const order = parseOrder(xml)
+    const patched = patchOrderXml(xml, {
+      ...order,
+      administration: { ...order.administration, invoiceAddressType: '' },
+    }, [])
+
+    expect(patched).toMatch(/<InvoiceAddressType[^>]*xsi:nil/)
+  })
+})

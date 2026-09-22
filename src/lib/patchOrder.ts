@@ -17,11 +17,25 @@ import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, Tec
 // DOM helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Writes a value into an element, clearing any `xsi:nil` first.
+ *
+ * `xsi:nil="true"` means "this value is null". Leaving it in place while also
+ * writing text produces `<InvoiceAddressType xsi:nil="true">Customer</InvoiceAddressType>`,
+ * which contradicts itself — and GPC believes the attribute, so the value is
+ * silently discarded on the next open. Every nullable field the user edits is
+ * affected: address types, dates, discounts, the handling fee.
+ */
+function writeValue(el: Element, value: string): void {
+  el.textContent = value
+  if (value !== '') el.removeAttribute('xsi:nil')
+}
+
 /** Sets the text content of the first document-level element with tagName. */
 function setDocTag(doc: Document, tagName: string, value: string): void {
   const el = doc.getElementsByTagName(tagName)[0]
   if (el) {
-    el.textContent = value
+    writeValue(el, value)
   } else {
     // Safety: create if absent (shouldn't happen for known fields)
     const created = doc.createElement(tagName)
@@ -34,7 +48,7 @@ function setDocTag(doc: Document, tagName: string, value: string): void {
 function setRootChildTag(doc: Document, tagName: string, value: string): void {
   for (const child of Array.from(doc.documentElement.children)) {
     if (child.tagName === tagName) {
-      child.textContent = value
+      writeValue(child, value)
       return
     }
   }
@@ -47,7 +61,7 @@ function setRootChildTag(doc: Document, tagName: string, value: string): void {
 function setChildTag(parent: Element, tagName: string, value: string): void {
   for (const child of Array.from(parent.children)) {
     if (child.tagName === tagName) {
-      child.textContent = value
+      writeValue(child, value)
       return
     }
   }
