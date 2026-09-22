@@ -129,3 +129,20 @@ export async function getPdbFromLibrary(name: string): Promise<CachedPdb | null>
     return null
   }
 }
+
+/**
+ * The newest catalog the browser holds, or null.
+ *
+ * "Newest" is the highest version name — `PDB290_09-2026` beats
+ * `PDB285_01-2026` — because that is how the catalogs are numbered and it is
+ * what an operator means by the current one. Falls back to the single 'current'
+ * slot for a browser that has only ever loaded one.
+ */
+export async function loadLatestPdb(): Promise<CachedPdb | null> {
+  const library = await listPdbLibrary()
+  for (const entry of library) {
+    const pdb = await getPdbFromLibrary(entry.name)
+    if (pdb) return pdb
+  }
+  return loadPdbCache()
+}

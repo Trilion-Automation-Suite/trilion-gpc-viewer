@@ -10,7 +10,7 @@ import { addCatalogArticle } from './lib/gpc/addItem.ts'
 import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
-import { loadPdbCache, addPdbToLibrary, listPdbLibrary, getPdbFromLibrary, pdbVersionName } from './lib/pdbCache.ts'
+import { addPdbToLibrary, listPdbLibrary, getPdbFromLibrary, loadLatestPdb, pdbVersionName } from './lib/pdbCache.ts'
 import type { PdbLibraryEntry } from './lib/pdbCache.ts'
 import { convertToDecryptedCatalog } from './lib/gpc/convertGpcFile.ts'
 import type { ConversionReport } from './lib/gpc/convertCatalog.ts'
@@ -59,6 +59,7 @@ export function App() {
   const [pdbLibrary, setPdbLibrary] = useState<PdbLibraryEntry[]>([])
   const [converting, setConverting] = useState(false)
   const [conversionReport, setConversionReport] = useState<ConversionReport | null>(null)
+  const [addItemError, setAddItemError] = useState<string | null>(null)
 
   // Mutable order copy — this is what the tab components read/write in edit mode
   const [order, setOrder] = useState<OrderSummary | null>(null)
@@ -72,7 +73,7 @@ export function App() {
   }, [darkMode])
 
   useEffect(() => {
-    loadPdbCache().then(cached => setPdbCached(cached !== null)).catch(() => setPdbCached(false))
+    loadLatestPdb().then(cached => setPdbCached(cached !== null)).catch(() => setPdbCached(false))
   }, [])
 
   // Sync mutable order copy whenever a new file is loaded
@@ -131,7 +132,8 @@ export function App() {
   const handleNewOrder = useCallback(async () => {
     setState({ status: 'loading' })
     try {
-      const cached = await loadPdbCache()
+      // Newest catalog available, not merely the last one loaded.
+      const cached = await loadLatestPdb()
       const result = await createNewOrder(cached)
       setState({ status: 'loaded', result })
     } catch (err) {
@@ -202,12 +204,10 @@ export function App() {
    */
   const handleAddProduct = useCallback((fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => {
     if (state.status !== 'loaded' || !state.result.configXml) {
-      setState({
-        status: 'error',
-        message: 'Cannot add a product without the product database this order was built on.',
-      })
+      setAddItemError('Cannot add a product without the product database this order was built on.')
       return
     }
+    setAddItemError(null)
     try {
       const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
       addCatalogArticle(doc, catalogContainer(state.result.configXml), fields.name, {
@@ -218,7 +218,9 @@ export function App() {
       setOrder(parseOrder(orderXml))
       setIsDirty(true)
     } catch (err) {
-      setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+      // Never replace the loaded order with an error screen: a product that
+      // cannot be added is a message, not a reason to close the file.
+      setAddItemError(err instanceof Error ? err.message : String(err))
     }
   }, [state])
 
@@ -581,6 +583,10 @@ export function App() {
 
       {isDirty && state.status === 'loaded' && (
         <SaveBar sourceFile={state.result.sourceFile} />
+      )}
+
+      {addItemError && (
+        <ErrorBanner message={addItemError} onRetry={() => setAddItemError(null)} />
       )}
 
       <main className="app">

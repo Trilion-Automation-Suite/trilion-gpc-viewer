@@ -362,6 +362,100 @@ function set(order: OrderDocument, name: string, value: OrderValue): void {
   setMember(order.root, 'OrderData', name, value)
 }
 
+// ── free articles (the catch-all bucket) ──────────────────────────────────────
+
+/**
+ * Items that take any article, whatever it is tagged. Their filter is `<Free>`.
+ *
+ * Most of the catalog needs them: 1881 of 3988 articles carry no `FilterTags` at
+ * all, so no free-list item claims them. Without this an operator can only add
+ * the tagged half of the catalog.
+ */
+const FREE_ARTICLES_FILTER = '<Free>'
+
+/** The `<Free>` items, in catalog order. */
+export function findFreeArticlesItems(config: ElementValue): ElementValue[] {
+  return listItems(section(config, 'ConfigurationItemsData'), 'ConfigurationItems').filter(
+    (item) =>
+      field(item, 'ItemType') === 'FreeArticles' &&
+      (field(item, 'WorksheetArticleFilter') ?? '') === FREE_ARTICLES_FILTER
+  )
+}
+
+/**
+ * The bucket an untagged article belongs in. The catalog ships three — for
+ * accessories, spare parts and services — so the article's own group picks one,
+ * falling back to the first.
+ */
+export function findFreeArticlesItem(config: ElementValue, article: ElementValue): ElementValue {
+  const items = findFreeArticlesItems(config)
+  if (!items.length) throw new Error('addItem: PDB has no FreeArticles configuration item')
+  const group = field(article, 'GroupLevel1') ?? ''
+  const mpg = field(article, 'MPG') ?? ''
+  return (
+    items.find((i) => field(i, 'GroupLevel1') === group) ??
+    items.find((i) => field(i, 'GroupLevel1') === mpg) ??
+    items[0]
+  )
+}
+
+/**
+ * Adds an article that belongs to no free list, as its own FreeArticles line.
+ *
+ * Member order follows FreeArticlesScreenData and OrderArticle in the decompiled
+ * 2.9.8 source. No artifact in the corpus contains a FreeArticlesScreenData, so
+ * unlike every other shape here this one is built from the class definition
+ * rather than checked against a real file.
+ */
+export function addFreeArticle(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  articleName: string,
+  options: AddArticleOptions = {}
+): OrderDocument {
+  const config = readPdbConfig(pdb)
+  const article = findArticle(config, articleName)
+  const item = findFreeArticlesItem(config, article)
+
+  const priceListName = options.priceListName ?? orderField(order, 'PriceList')
+  if (!priceListName) throw new Error('addItem: order has no PriceList')
+  const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
+  const amount = options.amount ?? 1
+  const rules = scanRoundingRules(pdbConfigXml(pdb))
+  const { dp, msrp } = priceArticle(article, priceListName, exchangeRate, rules, orderCurrencyIso(order))
+  const count = fromInt(amount)
+
+  const screen = el([
+    ['ConfigurationItem', clone(item)],
+    ['UseInCalculation', txt('true')],
+    ['No', txt(String(nextItemNumber(order)))],
+    ['TotalDp', txt(decimalString(multiply(dp, count)))],
+    ['TotalMsrp', txt(decimalString(multiply(msrp, count)))],
+    ['Discount', nil()],
+    ['IsDiscountPercentage', txt('false')],
+    ['IsHidden', txt('false')],
+    ['FreeArticles', el([
+      ['FreeArticle', el([
+        ['Amount', txt(String(amount))],
+        ['Step', txt('1')],
+        ['Article', clone(article)],
+        ['OverwrittenDp', nil()],
+        ['OverwrittenMrsp', nil()],
+        ['PriceOnRequest', txt('false')],
+        ['EuroMsrp', nil()],
+        ['Msrp', txt(decimalString(msrp))],
+        ['Dp', txt(decimalString(dp))],
+        ['SumMsrp', nil()],
+        ['SumDp', nil()],
+        ['CustomQuantityDiscount', nil()],
+      ])],
+    ])],
+  ])
+
+  appendTo(order.root, 'FreeArticlesData', 'FreeArticlesScreenData', screen)
+  return order
+}
+
 // ── support articles (SMA) ────────────────────────────────────────────────────
 
 /**
@@ -553,8 +647,17 @@ export function addCatalogArticle(
   articleName: string,
   options: AddArticleOptions & SupportContract = {}
 ): OrderDocument {
-  const article = findArticle(readPdbConfig(pdb), articleName)
-  return options.list || isSupportArticle(article)
-    ? addSupportArticle(order, pdb, articleName, options)
-    : addArticle(order, pdb, articleName, options)
+  const config = readPdbConfig(pdb)
+  const article = findArticle(config, articleName)
+  if (options.list || isSupportArticle(article)) {
+    return addSupportArticle(order, pdb, articleName, options)
+  }
+  // A free list claims the article by tag; anything untagged goes to the
+  // catch-all bucket rather than failing, which is most of the catalog.
+  try {
+    findFreeListItem(config, article)
+  } catch {
+    return addFreeArticle(order, pdb, articleName, options)
+  }
+  return addArticle(order, pdb, articleName, options)
 }
