@@ -55,6 +55,12 @@ export interface GpcContainer {
    */
   dosTime: number
   dosDate: number
+  /**
+   * False when the source stamped entries individually rather than sharing one
+   * time, as .NET does. Informational: the file was still read, and writing it
+   * back normalises the stamp.
+   */
+  sharedTimestamp?: boolean
 }
 
 /** Parses the OPC ZIP, decompressing each part. Throws on anything unexpected. */
@@ -119,11 +125,19 @@ export async function readContainer(zip: Uint8Array): Promise<GpcContainer> {
     p += 46 + nlen + elen + clen
   }
 
-  if (stamps.size !== 1) {
-    throw new Error(`container: expected one shared timestamp, found ${stamps.size}`)
+  // .NET stamps every entry with one shared time, and reproducing that exactly
+  // is what byte fidelity needs — but only when *writing*. Other writers stamp
+  // each entry separately, and refusing to read those would block the very files
+  // this code exists to repair and convert. Take the first stamp and record that
+  // they disagreed; writeContainer always emits a single shared one.
+  const [first] = [...stamps]
+  const [time, date] = (first ?? '0:0').split(':').map(Number)
+  return {
+    entries,
+    dosTime: time,
+    dosDate: date,
+    sharedTimestamp: stamps.size <= 1,
   }
-  const [time, date] = [...stamps][0].split(':').map(Number)
-  return { entries, dosTime: time, dosDate: date }
 }
 
 /** Serializes a container back to the exact byte layout .NET produces. */
