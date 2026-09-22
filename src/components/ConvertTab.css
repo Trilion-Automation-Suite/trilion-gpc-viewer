@@ -1,0 +1,21 @@
+.convert-tab { padding: 1rem 0; }
+.convert-intro { color: var(--muted, #555); max-width: 60ch; margin: 0 0 1rem; }
+.convert-empty { color: var(--muted, #555); padding: 1rem 0; }
+.convert-pick { display: inline-flex; align-items: center; gap: .5rem; cursor: pointer; }
+.convert-pick input { max-width: 22rem; }
+.convert-error { color: #b00020; }
+.convert-report { margin-top: 1.5rem; }
+.convert-report h3 { margin: 0 0 .75rem; font-size: 1.05rem; }
+.convert-report h4 { margin: 1.25rem 0 .4rem; font-size: .95rem; }
+.convert-stats { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0 0 .5rem; }
+.convert-stats div { display: flex; flex-direction: column; }
+.convert-stats dt { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #666); }
+.convert-stats dd { margin: 0; font-size: 1.05rem; }
+.convert-warn { border-left: 3px solid #d98300; padding-left: .75rem; }
+.convert-warn p { color: var(--muted, #555); max-width: 60ch; }
+.convert-sap { color: var(--muted, #666); font-size: .85em; }
+.convert-prices { border-collapse: collapse; font-size: .9rem; }
+.convert-prices th, .convert-prices td { text-align: left; padding: .2rem .75rem .2rem 0; }
+.convert-prices th { font-weight: 600; border-bottom: 1px solid var(--border, #ddd); }
+.convert-download { margin-top: 1.5rem; }
+.convert-caveat { color: #8a5a00; margin-top: .5rem; }

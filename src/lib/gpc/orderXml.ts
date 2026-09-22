@@ -198,7 +198,7 @@ function splitTag(inner: string): { name: string; attrs: Map<string, string> } {
   if (space < 0) return { name: trimmed, attrs: new Map() }
   const name = trimmed.slice(0, space)
   const attrs = new Map<string, string>()
-  for (const m of trimmed.slice(space).matchAll(/([\w:.\-]+)="([^"]*)"/g)) {
+  for (const m of trimmed.slice(space).matchAll(/([\w:.-]+)="([^"]*)"/g)) {
     attrs.set(m[1], unescapeXml(m[2]))
   }
   return { name, attrs }

@@ -16,6 +16,7 @@ import { ContactTab } from './components/ContactTab.tsx'
 import { AdminTab } from './components/AdminTab.tsx'
 import { CommentsTab } from './components/CommentsTab.tsx'
 import { EucTab } from './components/EucTab.tsx'
+import { ConvertTab } from './components/ConvertTab.tsx'
 import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
@@ -25,7 +26,7 @@ function nextItemNo(items: ConfigItem[]): string {
   return String(topLevel.length > 0 ? Math.max(...topLevel) + 1 : 1)
 }
 
-type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc'
+type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc' | 'convert'
 const TAB_LABELS: Record<Tab, string> = {
   items: 'Items',
   account: 'Account Details',
@@ -33,6 +34,7 @@ const TAB_LABELS: Record<Tab, string> = {
   admin: 'Administration Information',
   comments: 'Comments',
   euc: 'EUC Check',
+  convert: 'Convert Catalog',
 }
 
 type AppState =
@@ -590,6 +592,12 @@ export function App() {
                 <EucTab
                   order={order}
                   currencyRates={state.status === 'loaded' ? state.result.currencyRates : {}}
+                />
+              )}
+              {tab === 'convert' && (
+                <ConvertTab
+                  decryptedZip={state.status === 'loaded' ? state.result.rawDecryptedBuffer : null}
+                  sourceFilename={state.status === 'loaded' ? state.result.sourceFile : ''}
                 />
               )}
             </div>
