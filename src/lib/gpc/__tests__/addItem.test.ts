@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { addCatalogArticle, findSupportItem, isSupportArticle } from '../addItem.ts'
+import { addCatalogArticle, findArticle, findSupportItem, isSupportArticle, priceArticle } from '../addItem.ts'
+import { scanDiscounts, scanRoundingRules } from '../roundingRules.ts'
+import { formatDecimal, parseDecimal } from '../decimal.ts'
 import { parseOrderXml, serializeOrderXml } from '../orderXml.ts'
 import type { GpcContainer } from '../container.ts'
 
@@ -28,12 +30,23 @@ const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
     <RoundingRule><Rule>1 - commercial Rounding</Rule><Condition>MSRP</Condition><CurrencyIso>EUR</CurrencyIso><MPG>*</MPG><RangeFrom>0</RangeFrom><RangeTo>79228162514264337593543950335</RangeTo><RoundTo>1</RoundTo></RoundingRule>
     <RoundingRule><Rule>1 - commercial Rounding</Rule><Condition>DP</Condition><CurrencyIso>EUR</CurrencyIso><MPG>*</MPG><RangeFrom>0</RangeFrom><RangeTo>79228162514264337593543950335</RangeTo><RoundTo>1</RoundTo></RoundingRule>
   </RoundingRules>
+  <DiscountsData>
+    <Discounts>
+      <Discount><MPG>Spareparts</MPG><PriceListName>Partner</PriceListName><Factor>0.5</Factor></Discount>
+      <Discount><MPG>SMA (Stand-alone / Extension)</MPG><PriceListName>Partner</PriceListName><Factor>0.5</Factor></Discount>
+    </Discounts>
+  </DiscountsData>
   <ArticlesData>
     <Articles>
       <Article>
         <LongName>Calibration Panel</LongName><FilterTags>spare</FilterTags>
         <MPG>Spareparts</MPG>
         <ArticlePriceLists><ArticlePriceList><Name>Partner</Name><Currency>EUR</Currency><Dp>100</Dp><Msrp>200</Msrp></ArticlePriceList></ArticlePriceLists>
+      </Article>
+      <Article>
+        <LongName>Undiscounted Widget</LongName><FilterTags>spare2</FilterTags>
+        <MPG>Nothing Here</MPG>
+        <ArticlePriceLists><ArticlePriceList><Name>Partner</Name><Currency>EUR</Currency><Dp>60</Dp><Msrp>100</Msrp><EuroMsrp>100</EuroMsrp></ArticlePriceList></ArticlePriceLists>
       </Article>
       <Article>
         <LongName>EXT SMA for Sensor Driver</LongName><FilterTags>&lt;software-support&gt;</FilterTags>
@@ -66,6 +79,12 @@ function pdb(): GpcContainer {
 }
 
 const parse = () => parseOrderXml(new TextEncoder().encode(ORDER))
+
+/** The catalog as an element tree, which is what the pricing helpers take. */
+const configRoot = () =>
+  parseOrderXml(new TextEncoder().encode(
+    CONFIG.replace('<AdministrationData>', '<OrderData>').replace('</AdministrationData>', '</OrderData>')
+  )).root
 const xmlOf = (doc: ReturnType<typeof parseOrderXml>) => new TextDecoder().decode(serializeOrderXml(doc))
 
 describe('addCatalogArticle routes an article to the right kind of item', () => {
@@ -96,8 +115,33 @@ describe('addCatalogArticle routes an article to the right kind of item', () => 
     expect(xml.match(/<SupportArticle>/g)).toHaveLength(2)
     expect(xml).toContain('<TotalMsrp>4000</TotalMsrp>')
     // The distributor total is derived as msrp x (dp / msrp), so it carries the
-    // scale of a .NET decimal division — the configurator writes it that way.
-    expect(xml).toContain('<TotalDp>2000.0000000000000000000000000</TotalDp>')
+    // scale of a .NET decimal division. Changed 2026-09-22: that division now
+    // normalizes an exact quotient — 2000/4000 is 0.5, not 0.500…0 — so the
+    // total is `2000.0`, the same one-place shape a real order records for a
+    // line whose discount happens to be a round fraction.
+    expect(xml).toContain('<TotalDp>2000.0</TotalDp>')
+  })
+
+  // The distributor price is the list price minus a *rounded discount*, not a
+  // rounded discounted price: `msrp + Round(msrp x factor x -1)`. At 50% of
+  // 2000 the two agree; the shapes below are where they part company.
+  it('rounds the discount rather than the discounted price', () => {
+    const config = configRoot()
+    const rules = scanRoundingRules(CONFIG)
+    const discounts = scanDiscounts(CONFIG)
+    const price = (name: string) =>
+      priceArticle(findArticle(config, name), 'Partner', parseDecimal('1'), rules, 'EUR', discounts)
+
+    const support = price('EXT SMA for Sensor Driver')
+    expect(formatDecimal(support.msrp)).toBe('2000')
+    expect(formatDecimal(support.dp)).toBe('1000')
+  })
+
+  it('leaves the distributor price equal to the list price when nothing discounts it', () => {
+    const config = configRoot()
+    const article = findArticle(config, 'Undiscounted Widget')
+    const p = priceArticle(article, 'Partner', parseDecimal('1'), scanRoundingRules(CONFIG), 'EUR', scanDiscounts(CONFIG))
+    expect(formatDecimal(p.msrp)).toBe(formatDecimal(p.dp))
   })
 
   it('finds the support item by type, since its filter does not match the article tag', () => {

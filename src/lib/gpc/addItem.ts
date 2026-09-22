@@ -18,9 +18,26 @@ import type { ElementValue, OrderDocument, OrderMember, OrderValue } from './ord
 import { setMember } from './orderXml.ts'
 import { readPdbConfig } from './blankOrder.ts'
 import type { Dec } from './decimal.ts'
-import { add, divide, formatDecimal, fromInt, isZero, multiply, parseDecimalOrNull } from './decimal.ts'
+import {
+  add,
+  divide,
+  formatDecimal,
+  fromInt,
+  isZero,
+  multiply,
+  parseDecimalOrNull,
+  roundToQuantum,
+  subtract,
+} from './decimal.ts'
 import type { RoundingRule } from './roundingRules.ts'
-import { applyRounding, discountKey, scanRoundingRules, scanDiscounts } from './roundingRules.ts'
+import {
+  applyRounding,
+  findDiscount,
+  roundToTwoDecimals,
+  scanDiscounts,
+  scanRoundingRules,
+  selectRule,
+} from './roundingRules.ts'
 
 const ARTICLES_FILTER_PREFIX = '<Articles>'
 
@@ -94,22 +111,32 @@ export function findFreeListItem(config: ElementValue, article: ElementValue): E
 /**
  * Converting a catalog price into an order's currency.
  *
- * Not a single multiplication, and the difference is visible in the bytes. The
- * configurator rounds the list price per the catalog's rounding rules, then
- * derives the distributor price from *that rounded figure* times the price
- * list's own discount ratio, and rounds again:
+ * `AdministrationDataExt.CalculateMsrp` / `.CalculateDp` are the source, and
+ * three things in them are not what the arithmetic suggests:
  *
- *   msrp = round(msrp_eur x rate)
- *   dp   = round(msrp x (dp_eur / msrp_eur))
+ *  - **The list price starts from `EuroMsrp`, not the row's `Msrp`.** Most rows
+ *    agree; the discounted ones do not.
+ *  - **A zero price short-circuits.** `euroMsrp == 0` returns before any
+ *    rounding, which is why a zero-priced carrier article is written `0` and
+ *    not `0.00`.
+ *  - **The distributor price is the list price minus a *rounded discount*, not
+ *    a rounded product.** The configurator computes
+ *    `msrp + Round(msrp x factor x -1)`, so it is the discount that gets
+ *    quantised and the difference survives into the file: 245 at 30% gives
+ *    `245 - Round(-73.5)` = `245 - 74` = **171**, where rounding
+ *    `245 x 0.7 = 171.5` would give 172.
  *
- * Computing dp independently from dp_eur gives answers that are close and
- * wrong — 3781 where the file says 3776 — because the rounding applied to the
- * list price has to flow into the distributor price.
+ * With no discount row at all the distributor price simply *is* the list price.
+ * The euro `Dp` is only consulted for the `DP Rule` product group, which is
+ * converted directly.
  */
 export interface ArticlePricing {
   dp: Dec
   msrp: Dec
 }
+
+/** The product group whose distributor price is converted rather than derived. */
+const DP_RULE_MPG = 'DP Rule'
 
 export function priceArticle(
   article: ElementValue,
@@ -117,7 +144,8 @@ export function priceArticle(
   exchangeRate: Dec,
   rules: RoundingRule[] = [],
   currencyIso = '',
-  discounts?: Map<string, Dec>
+  discounts?: Map<string, Dec>,
+  destinationFactor: Dec = fromInt(1)
 ): ArticlePricing {
   const rows = listItems(article, 'ArticlePriceLists')
   const row = rows.find((r) => field(r, 'Name') === priceListName)
@@ -125,24 +153,33 @@ export function priceArticle(
     throw new Error(`addItem: article has no price list ${JSON.stringify(priceListName)}`)
   }
   const mpg = field(article, 'MPG') ?? ''
-  const msrpEur = parseDecimalOrNull(field(row, 'Msrp')) ?? fromInt(0)
+  const longName = field(article, 'LongName') ?? ''
+  // EuroMsrp is what the conversion starts from; Msrp is the row's own figure,
+  // which for a discounted price list has already been rounded.
+  const msrpEur = parseDecimalOrNull(field(row, 'EuroMsrp') ?? field(row, 'Msrp')) ?? fromInt(0)
   const dpEur = parseDecimalOrNull(field(row, 'Dp')) ?? fromInt(0)
+  const factor = multiply(exchangeRate, destinationFactor)
 
-  const msrp = applyRounding(rules, multiply(msrpEur, exchangeRate), 'MSRP', currencyIso, mpg)
+  const msrp = isZero(msrpEur)
+    ? msrpEur
+    : applyRounding(rules, multiply(msrpEur, factor), 'MSRP', currencyIso, mpg)
 
-  // The distributor price is the rounded list price less the discount for this
-  // product group and price list. Falling back to the catalog's own euro
-  // quotient when no discount is listed — that quotient is itself rounded, so
-  // it is an approximation and only used when there is nothing better. A
-  // promotional article can have a zero list price and a real distributor
-  // price, where neither applies and the euro figure converts directly.
-  const discount = discounts?.get(discountKey(mpg, priceListName))
-  const dpRaw = isZero(msrpEur)
-    ? multiply(dpEur, exchangeRate)
-    : discount
-      ? multiply(msrp, add(fromInt(1), { unscaled: -discount.unscaled, scale: discount.scale }))
-      : multiply(msrp, divide(dpEur, msrpEur))
-  const dp = applyRounding(rules, dpRaw, 'DP', currencyIso, mpg)
+  if (mpg === DP_RULE_MPG) {
+    const dp = isZero(dpEur) ? dpEur : applyRounding(rules, multiply(dpEur, factor), 'DP', currencyIso, mpg)
+    return { dp, msrp }
+  }
+  if (isZero(msrp)) return { dp: msrp, msrp }
+
+  const discount = findDiscount(discounts, longName, mpg, priceListName)
+  if (!discount) return { dp: msrp, msrp }
+
+  // The discounted price picks the rule; the *discount* is what gets rounded.
+  const discounted = multiply(msrp, subtract(fromInt(1), discount))
+  const rule = selectRule(rules, discounted, 'DP', currencyIso, mpg)
+  const off = multiply(multiply(msrp, discount), fromInt(-1))
+  const dp = add(msrp, rule && rule.mode !== 'twoDecimals'
+    ? roundToQuantum(off, rule.roundTo, rule.mode)
+    : roundToTwoDecimals(off))
   return { dp, msrp }
 }
 
@@ -309,11 +346,26 @@ export interface OrderScenario {
   distributor?: string
   /** HOM center Id. */
   homCenter?: string
-  /** Freight term; empty unless the operator picked one. */
-  freightTerm?: string
-  /** Payment term; empty unless the operator picked one. */
-  paymentTerm?: string
+  /** Who the order is for. */
+  accountDetails?: FieldBlock
+  /** The engineer on the customer's side. */
+  localTechnicalContact?: FieldBlock
+  /** Invoicing and shipping: address types, terms, method. */
+  orderAdministration?: FieldBlock
+  /** Why the deal looks the way it does — investment type, pricing, sale cycle. */
+  saleInformations?: FieldBlock
+  /** Industry / segment / application, inside SaleInformations. */
+  classification?: FieldBlock
+  /** Competitor rows, positionally into the blank order's existing entries. */
+  competitors?: FieldBlock[]
 }
+
+/**
+ * A block of fields an operator typed. Values go in at the schema's member
+ * order; an empty string is a *present but empty* element, which is how .NET
+ * writes `string.Empty` and not at all how it writes null.
+ */
+export type FieldBlock = Record<string, string | undefined>
 
 /**
  * Recomputes the order-level totals and status fields GPC writes on save.
@@ -330,62 +382,186 @@ export function recalculateOrder(
   const config = readPdbConfig(pdb)
   const params = section(config, 'ParametersData')
 
-  let totalDp = 0
-  let totalMsrp = 0
-  for (const listName of ['DependentListsData', 'FreeArticlesData', 'FreeListArticlesData', 'SupportArticlesData']) {
-    const list = order.root.members.find((m) => m.name === listName)?.value
-    if (!list || list.kind !== 'element') continue
-    for (const m of list.members) {
-      if (m.value.kind !== 'element') continue
-      if (field(m.value, 'UseInCalculation') === 'false') continue
-      totalDp += Number(field(m.value, 'TotalDp') ?? '0')
-      totalMsrp += Number(field(m.value, 'TotalMsrp') ?? '0')
-    }
+  let totalDp: Dec = fromInt(0)
+  let totalMsrp: Dec = fromInt(0)
+  for (const item of calculatedItems(order)) {
+    totalDp = add(totalDp, parseDecimalOrNull(field(item, 'TotalDp')) ?? fromInt(0))
+    totalMsrp = add(totalMsrp, parseDecimalOrNull(field(item, 'TotalMsrp')) ?? fromInt(0))
   }
 
   // Reference PDBs set both handling-fee thresholds low enough that the fee
   // always applies, and the recorded fee is 0 — present but zero.
-  const handlingFee = 0
+  const handlingFee: Dec = fromInt(0)
+  const finalPrice = totalMsrp
+  const toGom = orderValueToGom(totalMsrp, totalDp, finalPrice)
 
-  set(order, 'CleanOrder', txt('false'))
-  const reason = reasonUnclean(config, scenario)
-  if (reason) set(order, 'ReasonUnclean', txt(reason))
+  applyBlock(order.root, 'OrderData', 'AccountDetailsData', 'AccountDetailsData', scenario.accountDetails)
+  applyBlock(order.root, 'OrderData', 'LocalTechnicalContact', 'LocalTechnicalContact', scenario.localTechnicalContact)
+  applyBlock(order.root, 'OrderData', 'OrderAdministration', 'OrderAdministration', scenario.orderAdministration)
+  const sales = applyBlock(order.root, 'OrderData', 'SaleInformations', 'SaleInformations', scenario.saleInformations)
+  if (sales) {
+    applyBlock(sales, 'SaleInformations', 'ClassificationProperty', 'ClassificationProperty', scenario.classification)
+    const competitors = sub(sales, 'CompetitionInformations')
+    scenario.competitors?.forEach((fields, i) => {
+      const row = competitors?.members[i]?.value
+      if (row && row.kind === 'element') fill(row, 'CompetitionInformation', fields)
+    })
+  }
+
+  const reason = reasonUnclean(config, order, scenario)
+  set(order, 'CleanOrder', txt(String(reason === '')))
+  // `IsOrderClean` assigns `ReasonUnclean = ""` before it appends anything, so
+  // a clean order records an empty element rather than no element at all.
+  set(order, 'ReasonUnclean', reason === '' ? el([]) : txt(reason))
   set(order, 'DiscountForCustomer', txt('0'))
   if (scenario.distributor) set(order, 'Distributor', txt(scenario.distributor))
-  set(order, 'FinalPriceForEndCustomer', txt(decimalString(totalMsrp)))
-  set(order, 'FinalPriceForEndCustomerWithHandlingFee', txt(decimalString(totalMsrp + handlingFee)))
+  set(order, 'FinalPriceForEndCustomer', txt(decimalString(finalPrice)))
+  set(order, 'FinalPriceForEndCustomerWithHandlingFee', txt(decimalString(add(finalPrice, handlingFee))))
   set(order, 'HandlingFee', txt(decimalString(handlingFee)))
   set(order, 'HandlingFeeName', txt(field(params, 'HandlingFeeDisplayName') ?? 'Handling Fee'))
   if (scenario.homCenter) set(order, 'HOMCenter', txt(scenario.homCenter))
   set(order, 'Msrp', txt(decimalString(totalMsrp)))
   set(order, 'Dp', txt(decimalString(totalDp)))
-  // Scale 1, not 0: the user's OrderValueToGomModel is ApplySplit and the split
-  // share is null, so .NET computes `dp * 1.0m`, which keeps one decimal place.
-  set(order, 'OrderValueToGom', txt(decimalString(totalDp, 1)))
-  set(order, 'OrderValueToGomWithHandlingFee', txt(decimalString(totalDp + handlingFee, 1)))
+  set(order, 'OrderValueToGom', txt(decimalString(toGom)))
+  set(order, 'OrderValueToGomWithHandlingFee', txt(decimalString(add(toGom, handlingFee))))
   set(order, 'SourceFileName', txt(field(params, 'VersionName') ?? ''))
 
   return order
 }
 
 /**
- * GPC marks an order unclean and lists why. Each line is CRLF-terminated,
- * inside the element's text — verified against the artifact's raw bytes.
+ * Every line that counts toward the totals, *including sub-configurations*.
+ *
+ * A child line is a first-class row in the configurator's item list — it is
+ * added to the same flat collection its parent goes into — so it is summed like
+ * any other. Leaving children out puts an order's total short by exactly the
+ * price of its sub-configurations.
  */
-function reasonUnclean(config: ElementValue, scenario: OrderScenario): string {
-  const distributor = scenario.distributor
-    ? findDistributor(config, scenario.distributor)
-    : null
+function calculatedItems(order: OrderDocument): ElementValue[] {
+  const out: ElementValue[] = []
+  const visit = (item: ElementValue): void => {
+    if (field(item, 'UseInCalculation') === 'false') return
+    out.push(item)
+    for (const child of listItems(item, 'SubConfigurations')) visit(child)
+  }
+  for (const listName of ['DependentListsData', 'FreeArticlesData', 'FreeListArticlesData', 'SupportArticlesData']) {
+    const list = order.root.members.find((m) => m.name === listName)?.value
+    if (!list || list.kind !== 'element') continue
+    for (const m of list.members) if (m.value.kind === 'element') visit(m.value)
+  }
+  return out
+}
+
+/**
+ * The figure GPC reports back to itself, under the `ApplySplit` model its users
+ * are configured with:
+ *
+ *     TotalMargin         = 1 - TotalDp / TotalMsrp
+ *     DiscountForCustomer = 1 - FinalPriceForEndCustomer / TotalMsrp
+ *     OrderValueToGom     = TotalMsrp * (1 - TotalMargin + DiscountForCustomer / 2)
+ *
+ * With no custom end-customer price that is `TotalMsrp x (TotalDp / TotalMsrp)`
+ * — the distributor total again, and again not arithmetically. The divide and
+ * the multiply each carry decimal scale, which is why the artifacts record
+ * `1771.0` for one order and `41533.999999999999999999999999` for another.
+ * Rounding the sum to a fixed number of places cannot produce either.
+ */
+function orderValueToGom(totalMsrp: Dec, totalDp: Dec, finalPrice: Dec): Dec {
+  if (isZero(totalMsrp)) return totalDp
+  const margin = subtract(fromInt(1), divide(totalDp, totalMsrp))
+  const customerDiscount = subtract(fromInt(1), divide(finalPrice, totalMsrp))
+  const factor = add(subtract(fromInt(1), margin), divide(customerDiscount, fromInt(2)))
+  return multiply(totalMsrp, factor)
+}
+
+/**
+ * Puts a block of typed-in fields into one element, creating nothing that was
+ * not already there. Returns the element so nested blocks can be filled too.
+ */
+function applyBlock(
+  parent: ElementValue,
+  parentType: string,
+  member: string,
+  typeName: string,
+  fields: FieldBlock | undefined
+): ElementValue | null {
+  let target = sub(parent, member)
+  if (!target && fields) {
+    target = el([])
+    setMember(parent, parentType, member, target)
+  }
+  if (target && fields) fill(target, typeName, fields)
+  return target
+}
+
+function fill(target: ElementValue, typeName: string, fields: FieldBlock): void {
+  for (const [name, value] of Object.entries(fields)) {
+    if (value === undefined) continue
+    // `string.Empty` serializes as `<Name />`, which is an empty element and
+    // not an element holding an empty string.
+    setMember(target, typeName, name, value === '' ? el([]) : txt(value))
+  }
+}
+
+/**
+ * GPC marks an order unclean and lists why — `OrderDataExt.IsOrderClean`, in
+ * its order, since the lines are concatenated. Each line is CRLF-terminated
+ * inside the element's text, verified against the artifact's raw bytes.
+ */
+function reasonUnclean(config: ElementValue, order: OrderDocument, scenario: OrderScenario): string {
+  const distributor = scenario.distributor ? findDistributor(config, scenario.distributor) : null
+  const administration = scenario.orderAdministration ?? {}
   const lines: string[] = []
-  const freight = scenario.freightTerm ?? ''
-  const payment = scenario.paymentTerm ?? ''
+
+  const destination = order.root.members.find((m) => m.name === 'DestinationNew')?.value
+  const exportControlled =
+    destination?.kind === 'element' && field(destination, 'ExportControl') === 'true'
+  if (exportControlled && orderField(order, 'OrderUsedInWeaponProduction') !== 'false') {
+    lines.push('* Export restrictions due to weapon production.')
+  }
+
+  const freight = administration.ShippingFreightTerm ?? ''
   if (!standardTerms(distributor, 'StandardFreightTerms').includes(freight)) {
     lines.push(`* Not standard freight term '${freight}'.`)
   }
+  const payment = administration.InvoicePaymentTerm ?? ''
   if (!standardTerms(distributor, 'StandardPaymentTerms').includes(payment)) {
     lines.push(`* Not standard payment term '${payment}'.`)
   }
-  return lines.length ? lines.map((l) => `${l}\r\n`).join('') : ''
+  if (orderField(order, 'FinalPriceForEndCustomer') !== orderField(order, 'Msrp')) {
+    lines.push('* Final price differs from calculated msrp.')
+  }
+  if (listCount(order, 'FreeArticlesData') > 0) lines.push('* Contains free articles.')
+
+  for (const line of listItems(order.root, 'FreeListArticlesData')) {
+    for (const entry of listItems(line, 'FreeListArticles')) {
+      const article = sub(entry, 'Article')
+      if (article && field(article, 'Unclean') === 'true') {
+        lines.push(`* Contains unclean article '${field(article, 'LongName') ?? ''}'`)
+      }
+    }
+  }
+  for (const screen of listItems(order.root, 'SupportArticlesData')) {
+    for (const entry of listItems(screen, 'SoftwareSupportArticles')) {
+      const article = sub(entry, 'Article')
+      if (article && field(article, 'Unclean') === 'true') {
+        lines.push(`* Contains unclean article '${field(article, 'LongName') ?? ''}'`)
+      }
+    }
+  }
+  for (const line of listItems(order.root, 'DependentListsData')) {
+    const item = sub(line, 'ConfigurationItem')
+    if (item && field(item, 'Unclean') === 'true') {
+      lines.push(`* Contains unclean configuration item '${field(item, 'Name') ?? ''}'`)
+    }
+  }
+
+  return lines.map((l) => `${l}\r\n`).join('')
+}
+
+function listCount(order: OrderDocument, listName: string): number {
+  const list = order.root.members.find((m) => m.name === listName)?.value
+  return list && list.kind === 'element' ? list.members.length : 0
 }
 
 function findDistributor(config: ElementValue, id: string): ElementValue | null {
@@ -591,7 +767,7 @@ export function addSupportArticle(
     article, priceListName, exchangeRate, rules, orderCurrencyIso(order), scanDiscounts(configText)
   )
 
-  const screen = supportScreen(order, config, options)
+  const screen = ensureSupportScreen(order, config, options)
   const entry = el([
     ['Amount', txt(String(amount))],
     ['Step', txt('1')],
@@ -625,7 +801,7 @@ export function addSupportArticle(
 }
 
 /** The order's support screen, cloned from the catalog on first use. */
-function supportScreen(
+export function ensureSupportScreen(
   order: OrderDocument,
   config: ElementValue,
   options: SupportContract & { useInCalculation?: boolean }
@@ -659,18 +835,114 @@ function supportScreen(
 }
 
 /**
+ * The support item's worksheet filter with its `<Support>` prefix removed —
+ * the name of the dependent list a dongle is configured from. The configurator
+ * calls this the plain worksheet article filter and derives it exactly this way.
+ */
+export function plainSupportFilter(supportItem: ElementValue): string {
+  return (field(supportItem, 'WorksheetArticleFilter') ?? '').replace(SUPPORT_FILTER_PREFIX, '')
+}
+
+const SUPPORT_FILTER_PREFIX = '<Support>'
+
+/**
+ * Rebuilds `SoftwareSupportArticles` from the screen's dongle lists.
+ *
+ * `SupportScreenData.SoftwareSupportArticles` is a *computed* property whenever
+ * `IsLegacy` is false: it flattens `DependentListSupportScreenDatas` through
+ * `SupportArticleConversionHelper.ConvertToSupportArticles`, one article per
+ * unit of each selected option, carrying the dongle's contract state down onto
+ * every one of them. Nothing stores that list, so nothing may be handed it —
+ * it has to be derived here too, or the bytes are a copy rather than a result.
+ */
+export function refreshSupportArticles(screen: ElementValue, config: ElementValue): void {
+  const dongles = sub(screen, 'DependentListSupportScreenDatas')
+  const target = sub(screen, 'SoftwareSupportArticles')
+  if (!dongles || !target) return
+  target.members = []
+  for (const dongle of listItems(screen, 'DependentListSupportScreenDatas')) {
+    for (const section_ of listItems(dongle, 'Sections')) {
+      for (const option of listItems(section_, 'SectionArticles')) {
+        const amount = Number(field(option, 'Amount') ?? '0')
+        for (let i = 0; i < amount; i++) {
+          target.members.push({
+            name: 'SupportArticle',
+            value: supportArticleFrom(config, dongle, option),
+          })
+        }
+      }
+    }
+  }
+  retotalSupportScreen(screen)
+}
+
+/** One derived `SupportArticle`: the option's price, the dongle's contract. */
+function supportArticleFrom(config: ElementValue, dongle: ElementValue, option: ElementValue): ElementValue {
+  const name = field(option, 'Name') ?? ''
+  const carry = (from: ElementValue, member: string): Array<[string, OrderValue]> => {
+    const value = field(from, member)
+    return value === null ? [] : [[member, txt(value)]]
+  }
+  return el([
+    ['Amount', txt('1')],
+    ['Step', txt(field(option, 'Step') ?? '1')],
+    ['Article', clone(findArticle(config, name))],
+    ['OverwrittenDp', nil()],
+    ['OverwrittenMrsp', nil()],
+    ['PriceOnRequest', txt('false')],
+    ['EuroMsrp', nil()],
+    ['Msrp', txt(field(option, 'Msrp') ?? '0')],
+    ['Dp', txt(field(option, 'Dp') ?? '0')],
+    ['SumMsrp', nil()],
+    ['SumDp', nil()],
+    ['CustomQuantityDiscount', nil()],
+    ['EconomyYears', el([])],
+    ...carry(dongle, 'EndNewContract'),
+    ...carry(dongle, 'EndOldContract'),
+    ['IsOlderSelected', txt(field(dongle, 'IsOlderSelected') ?? 'false')],
+    ['MsrpForMissingMonth', nil()],
+    ['MsrpForNewContract', nil()],
+    ['MsrpPerYear', nil()],
+    ...carry(dongle, 'DongleId').map(([, v]) => ['SensorSnDongleId', v] as [string, OrderValue]),
+    ...carry(dongle, 'StartNewContract'),
+  ])
+}
+
+/**
  * Support totals, shaped the way the configurator computes them.
  *
  * The list total is a plain sum. The distributor total is *not*: the
  * configurator derives it as `msrp x (dp / msrp)` — see
  * SoftwareSupportArticlesViewModel, which accumulates
  * `SumMsrpDiscounted * MsrpToDpFactor`. Mathematically that is the sum back
- * again, but a .NET `decimal` division carries 29 significant digits and the
- * multiplication keeps them, so the saved value is `4145.0000000000000000000000000`
+ * again, but a .NET `decimal` division carries its digits into the
+ * multiplication, so the saved value is `4145.0000000000000000000000000`
  * rather than `4145`. Summing directly gives the right number with the wrong
  * shape, and the bytes differ.
+ *
+ * Where the screen has dongle lists the sum is taken *per dongle*, because that
+ * is where the view model accumulates it — each dongle contributes its own
+ * already-shaped total, and the shapes add.
  */
 function retotalSupportScreen(screen: ElementValue): void {
+  const dongles = listItems(screen, 'DependentListSupportScreenDatas')
+  if (dongles.length > 0) {
+    let msrp: Dec = fromInt(0)
+    let dp: Dec = fromInt(0)
+    for (const dongle of dongles) {
+      msrp = add(msrp, parseDecimalOrNull(field(dongle, 'TotalMsrp')) ?? fromInt(0))
+      dp = add(dp, parseDecimalOrNull(field(dongle, 'TotalDp')) ?? fromInt(0))
+    }
+    for (const a of listItems(screen, 'HardwareSupportArticles')) {
+      const amount = fromInt(Number(field(a, 'Amount') ?? '1'))
+      msrp = add(msrp, multiply(parseDecimalOrNull(field(a, 'Msrp')) ?? fromInt(0), amount))
+      dp = add(dp, multiply(parseDecimalOrNull(field(a, 'Dp')) ?? fromInt(0), amount))
+    }
+    setText(screen, 'TotalMsrp', decimalString(msrp))
+    setText(screen, 'TotalDp', decimalString(dp))
+    return
+  }
+
   let msrp: Dec = fromInt(0)
   let dp: Dec = fromInt(0)
   for (const listName of ['HardwareSupportArticles', 'SoftwareSupportArticles']) {

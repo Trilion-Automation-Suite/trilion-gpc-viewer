@@ -18,10 +18,22 @@ describe('decimal keeps scale the way .NET does', () => {
     expect(f(add(d('1.5'), d('2.25')))).toBe('3.75')
   })
 
-  it('divides to 28 places, half away from zero', () => {
+  it('divides to a given number of places, half away from zero', () => {
     expect(f(divide(d('1'), d('2'), 2))).toBe('0.50')
     expect(f(divide(d('1'), d('3'), 5))).toBe('0.33333')
     expect(f(divide(d('2'), d('3'), 5))).toBe('0.66667')
+  })
+
+  // Changed 2026-09-22: a .NET decimal's scale field is 0..28, and an exact
+  // quotient comes back normalized. Both are visible in artifacts — an order
+  // records `1771.0` for the first and `41533.999999999999999999999999` for
+  // the second, and a 29-place division produced `41534.000000000000000000000000`.
+  it('divides at most 28 places and normalizes an exact quotient', () => {
+    expect(f(divide(d('1771'), d('2530')))).toBe('0.7')
+    expect(f(divide(d('1'), d('3'))).length).toBe('0.'.length + 28)
+    expect(f(multiply(d('2530'), divide(d('1771'), d('2530'))))).toBe('1771.0')
+    expect(f(multiply(d('56250'), divide(d('41534'), d('56250')))))
+      .toBe('41533.999999999999999999999999')
   })
 
   it('compares across scales', () => {
@@ -38,10 +50,18 @@ describe('roundToQuantum', () => {
   it('rounds up to a tenth', () => {
     expect(f(roundToQuantum(d('12.21'), d('0.1'), 'up'))).toBe('12.3')
   })
-  it('commercial rounding is half away from zero, not banker\'s', () => {
+  it('commercial rounding is half away from zero', () => {
     expect(f(roundToQuantum(d('2.5'), d('1'), 'commercial'))).toBe('3')
     expect(f(roundToQuantum(d('3.5'), d('1'), 'commercial'))).toBe('4')
     expect(f(roundToQuantum(d('-2.5'), d('1'), 'commercial'))).toBe('-3')
+  })
+  // What rule "1 - commercial Rounding" actually does: RoundingRuleExt calls
+  // Math.Round, which is MidpointRounding.ToEven whatever the rule is called.
+  it('rule 1 is banker\'s rounding despite its name', () => {
+    expect(f(roundToQuantum(d('2.5'), d('1'), 'even'))).toBe('2')
+    expect(f(roundToQuantum(d('3.5'), d('1'), 'even'))).toBe('4')
+    expect(f(roundToQuantum(d('-73.5'), d('1'), 'even'))).toBe('-74')
+    expect(f(roundToQuantum(d('-12.764'), d('1'), 'even'))).toBe('-13')
   })
   it('takes the quantum\'s scale, which is what shapes the price', () => {
     expect(f(roundToQuantum(d('1827.35'), d('1'), 'commercial'))).toBe('1827')
@@ -75,11 +95,24 @@ describe('rounding rules from a catalog', () => {
     expect(f(applyRounding(rules, d('1771.00'), 'DP', 'USD', 'Spareparts'))).toBe('1771')
   })
 
-  it('falls back to the whole unit when no rule covers the value', () => {
-    // Another currency matches nothing. So does a value below the band a rule
-    // starts at — the USD list rule begins at 100, which is why a zero-priced
-    // carrier article is written as 0 and not 0.00.
-    expect(f(applyRounding(rules, d('2610.50'), 'MSRP', 'EUR', '*'))).toBe('2611')
+  // Changed 2026-09-22: the fallback is two decimal places, not the whole unit.
+  // `RoundingRuleExt.Round`'s default arm is `Math.Round(price * 100m) / 100m`,
+  // and an artifact records an accessory below the USD rule's band as `63.82`
+  // — 55.5 x 1.15 = 63.825 rounded half to even — where the whole-unit fallback
+  // gave 64. A zero still comes out `0` because the quotient normalizes.
+  it('falls back to two decimal places when no rule covers the value', () => {
+    expect(f(applyRounding(rules, d('63.825'), 'MSRP', 'USD', 'Accessories'))).toBe('63.82')
+    expect(f(applyRounding(rules, d('2610.50'), 'MSRP', 'EUR', '*'))).toBe('2610.5')
     expect(f(applyRounding(rules, d('0.00'), 'MSRP', 'USD', 'No Discount'))).toBe('0')
+  })
+
+  // The upper bound is exclusive — `RangeFrom <= price && RangeTo > price` —
+  // and the group pass runs before the catch-all pass, so a `*` rule earlier in
+  // the table never shadows a group rule later in it.
+  it('treats RangeTo as exclusive', () => {
+    // 99.99 is still inside the spare-parts band, so it keeps the tenth's scale.
+    expect(f(applyRounding(rules, d('99.99'), 'DP', 'USD', 'Spareparts'))).toBe('100.0')
+    // 100 is the band's RangeTo, which excludes it: the catch-all takes over.
+    expect(f(applyRounding(rules, d('100'), 'DP', 'USD', 'Spareparts'))).toBe('100')
   })
 })

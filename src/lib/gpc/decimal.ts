@@ -34,6 +34,9 @@ function pow10(n: number): bigint {
  */
 const MAX_SIGNIFICANT_DIGITS = 29
 
+/** ...but the scale field is only 0..28, so no value carries 29 decimal places. */
+const MAX_SCALE = 28
+
 function digitCount(n: bigint): number {
   const abs = n < 0n ? -n : n
   return abs === 0n ? 1 : abs.toString().length
@@ -113,6 +116,11 @@ export function add(a: Dec, b: Dec): Dec {
   }
 }
 
+/** Subtraction: the result takes the larger scale, as .NET's does. */
+export function subtract(a: Dec, b: Dec): Dec {
+  return add(a, { unscaled: -b.unscaled, scale: b.scale })
+}
+
 export function isZero(d: Dec): boolean {
   return d.unscaled === 0n
 }
@@ -125,19 +133,25 @@ export function compare(a: Dec, b: Dec): number {
 }
 
 /**
- * Division to a fixed number of decimal places, rounded half away from zero.
+ * Division, rounded half away from zero.
  *
- * .NET's decimal division carries about 28 significant digits, which is the
- * default here. The pricing path needs it for the discount ratio: a price list
- * of 394 against 493 is not a round fraction, and truncating it early moves the
- * final price.
+ * With no explicit scale this models .NET's own `decimal` division, which has
+ * two properties the bytes depend on:
+ *
+ *  - **The scale ceiling is 28, not 29.** A `decimal` holds up to 29 significant
+ *    digits but its scale field is 0..28, so a quotient below 1 can never carry
+ *    more than 28 decimals. Carrying 29 moves the last digit of the round trip
+ *    `Msrp x (Dp / Msrp)` and the order total came out `41534.000000000000000000000000`
+ *    where the artifact says `41533.999999999999999999999999`.
+ *  - **An exact quotient is normalized.** .NET gives `1771m / 2530m` as `0.7`,
+ *    not `0.7000...`, so trailing zeros are dropped. That is what makes an
+ *    order's `OrderValueToGom` render as `1771.0` rather than with 28 places.
+ *
+ * An explicit `scale` means "give me exactly this many places" and does neither.
  */
 export function divide(a: Dec, b: Dec, scale?: number): Dec {
   if (b.unscaled === 0n) throw new Error('decimal: division by zero')
-  // Without an explicit scale, carry as many digits as a .NET decimal holds.
-  // That is what makes a x (b / a) come back as b with the division's scale
-  // still attached, which is how the configurator's totals are shaped.
-  const wanted = scale ?? MAX_SIGNIFICANT_DIGITS
+  const wanted = scale ?? MAX_SCALE
   const shift = wanted + b.scale - a.scale
   const numerator = shift >= 0 ? a.unscaled * pow10(shift) : a.unscaled / pow10(-shift)
   const negative = (numerator < 0n) !== (b.unscaled < 0n)
@@ -146,10 +160,32 @@ export function divide(a: Dec, b: Dec, scale?: number): Dec {
   let q = n / dd
   if ((n % dd) * 2n >= dd) q += 1n
   const result = { unscaled: negative ? -q : q, scale: wanted }
-  return scale === undefined ? clampPrecision(result) : result
+  return scale === undefined ? normalize(clampPrecision(result)) : result
 }
 
-export type RoundingMode = 'commercial' | 'up' | 'down'
+/** Drops trailing zero decimals, the way .NET's division normalizes its result. */
+function normalize(d: Dec): Dec {
+  let { unscaled, scale } = d
+  while (scale > 0 && unscaled % TEN === 0n) {
+    unscaled /= TEN
+    scale -= 1
+  }
+  return { unscaled, scale }
+}
+
+/**
+ * The rounding a catalog rule asks for, named after what `RoundingRuleExt.Round`
+ * actually does rather than after the rule's own label:
+ *
+ *     '1' => Math.Round(price / RoundTo) * RoundTo
+ *     '2' => Math.Ceiling(...)
+ *     '3' => Math.Floor(...)
+ *
+ * `Math.Round(decimal)` is **banker's rounding** — MidpointRounding.ToEven —
+ * which is why a discount of exactly 73.5 comes out 74 and one of 12.5 comes
+ * out 12. The table calls rule 1 "commercial Rounding"; the code does not.
+ */
+export type RoundingMode = 'even' | 'commercial' | 'up' | 'down'
 
 /**
  * Rounds to a multiple of `quantum`, the way the catalog's rounding rules mean it.
@@ -157,8 +193,8 @@ export type RoundingMode = 'commercial' | 'up' | 'down'
  * The result takes the quantum's scale, which is what gives prices their shape:
  * a quantum of `10` yields `2610`, a quantum of `0.1` yields `12.3`.
  *
- * `commercial` is half away from zero — .NET's MidpointRounding.AwayFromZero,
- * not banker's rounding.
+ * `even` is .NET's `Math.Round`, half to even. `commercial` is half away from
+ * zero; the catalog's rule names promise it but its code never asks for it.
  */
 export function roundToQuantum(value: Dec, quantum: Dec, mode: RoundingMode): Dec {
   if (isZero(quantum)) return value
@@ -181,7 +217,9 @@ export function roundToQuantum(value: Dec, quantum: Dec, mode: RoundingMode): De
       if (!negative) steps += 1n
     } else {
       const twice = (remainder < 0n ? -remainder : remainder) * 2n
-      if (twice >= qAbs) steps += negative ? -1n : 1n
+      const half = twice === qAbs
+      const roundAway = mode === 'commercial' ? twice >= qAbs : half ? quotient % 2n !== 0n : twice > qAbs
+      if (roundAway) steps += negative ? -1n : 1n
     }
   }
 

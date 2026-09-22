@@ -12,14 +12,14 @@
  * what the configurator writes, where naive rounding gives 2611.
  */
 import type { Dec, RoundingMode } from './decimal.ts'
-import { compare, parseDecimal, parseDecimalOrNull, roundToQuantum } from './decimal.ts'
+import { compare, divide, multiply, parseDecimal, parseDecimalOrNull, roundToQuantum } from './decimal.ts'
 import { sliceSection } from '../configScan.ts'
 
 /** Which price a rule applies to. */
 export type PriceKind = 'MSRP' | 'DP'
 
 export interface RoundingRule {
-  mode: RoundingMode
+  mode: Mode
   condition: PriceKind
   currencyIso: string
   /** Product group, or `*` for any. */
@@ -29,13 +29,23 @@ export interface RoundingRule {
   roundTo: Dec
 }
 
-/** The catalog spells the mode out; these are the three it uses. */
-function toMode(rule: string): RoundingMode | null {
-  const text = rule.toLowerCase()
-  if (text.includes('commercial')) return 'commercial'
-  if (text.includes('round up')) return 'up'
-  if (text.includes('round down')) return 'down'
-  return null
+/** Not a rule mode: the marker for "round to two places", handled separately. */
+const TWO_DECIMALS = 'twoDecimals'
+export type Mode = RoundingMode | typeof TWO_DECIMALS
+
+/**
+ * The mode a rule asks for. `RoundingRuleExt.Round` switches on the *first
+ * character* of the rule's name and nothing else, so that is what is read here:
+ * `'1'` is `Math.Round` (half to even), `'2'` `Math.Ceiling`, `'3'` `Math.Floor`.
+ * Anything else — including a missing rule — falls through to two decimals.
+ */
+function toMode(rule: string): Mode {
+  switch (rule.charAt(0)) {
+    case '1': return 'even'
+    case '2': return 'up'
+    case '3': return 'down'
+    default: return TWO_DECIMALS
+  }
 }
 
 function tagText(block: string, tag: string): string {
@@ -66,7 +76,7 @@ export function scanRoundingRules(configXml: string): RoundingRule[] {
     const mode = toMode(tagText(block, 'Rule'))
     const condition = tagText(block, 'Condition').toUpperCase()
     const roundTo = parseDecimalOrNull(tagText(block, 'RoundTo'))
-    if (!mode || !roundTo || (condition !== 'MSRP' && condition !== 'DP')) continue
+    if (!roundTo || (condition !== 'MSRP' && condition !== 'DP')) continue
 
     rules.push({
       mode,
@@ -83,11 +93,12 @@ export function scanRoundingRules(configXml: string): RoundingRule[] {
 }
 
 /**
- * The rule that applies, or null when none does.
+ * The rule that applies, or null when none does — `CurrenciesDataExt.FindRoundingRule`.
  *
- * A rule naming the product group wins over the `*` catch-all; that is what
- * makes spare parts round to a tenth in their low band while everything else
- * rounds to a whole unit.
+ * Two details decide real prices. A rule naming the product group wins over the
+ * `*` catch-all, in a *separate pass*, so a `*` rule earlier in the table never
+ * shadows a group rule later in it. And the upper bound is **exclusive**:
+ * `RangeFrom <= price && RangeTo > price`.
  */
 export function selectRule(
   rules: RoundingRule[],
@@ -96,29 +107,28 @@ export function selectRule(
   currencyIso: string,
   mpg: string
 ): RoundingRule | null {
-  let fallback: RoundingRule | null = null
-  for (const rule of rules) {
-    if (rule.condition !== kind) continue
-    if (rule.currencyIso !== currencyIso) continue
-    if (compare(value, rule.rangeFrom) < 0 || compare(value, rule.rangeTo) > 0) continue
-    if (rule.mpg === mpg) return rule
-    if (rule.mpg === '*' && !fallback) fallback = rule
-  }
-  return fallback
+  const matches = (rule: RoundingRule, group: string): boolean =>
+    rule.condition === kind &&
+    rule.currencyIso === currencyIso &&
+    rule.mpg === group &&
+    compare(rule.rangeFrom, value) <= 0 &&
+    compare(rule.rangeTo, value) > 0
+  return rules.find((r) => matches(r, mpg)) ?? rules.find((r) => matches(r, '*')) ?? null
 }
 
-/**
- * The whole unit, used when no rule covers a value.
- *
- * That happens for real prices: the USD list rule starts at 100, so a zero-priced
- * carrier article matches nothing. The configurator still writes `0`, not `0.00`,
- * so an unmatched value is not left at whatever scale the conversion gave it.
- */
-const WHOLE_UNIT = parseDecimal('1')
+const HUNDRED = parseDecimal('100')
 const ZERO = parseDecimal('0')
 const ONE = parseDecimal('1')
 
-/** Applies the catalog's rounding, falling back to the whole unit. */
+/**
+ * Applies the catalog's rounding.
+ *
+ * The fallback when no rule covers a value is **two decimal places**, half to
+ * even — `Math.Round(price * 100m) / 100m`, the default arm of
+ * `RoundingRuleExt.Round`. Not the whole unit: the USD list rule starts at 100,
+ * so every accessory below that price is rounded here, and the file records
+ * them with their cents.
+ */
 export function applyRounding(
   rules: RoundingRule[],
   value: Dec,
@@ -127,9 +137,13 @@ export function applyRounding(
   mpg: string
 ): Dec {
   const rule = selectRule(rules, value, kind, currencyIso, mpg)
-  return rule
-    ? roundToQuantum(value, rule.roundTo, rule.mode)
-    : roundToQuantum(value, WHOLE_UNIT, 'commercial')
+  if (!rule || rule.mode === TWO_DECIMALS) return roundToTwoDecimals(value)
+  return roundToQuantum(value, rule.roundTo, rule.mode)
+}
+
+/** `Math.Round(price * 100m) / 100m`, trailing zeros dropped as .NET drops them. */
+export function roundToTwoDecimals(value: Dec): Dec {
+  return divide(roundToQuantum(multiply(value, HUNDRED), ONE, 'even'), HUNDRED)
 }
 
 
@@ -162,11 +176,37 @@ export function scanDiscounts(configXml: string): Map<string, Dec> {
     // than being absent, e.g. -792281625142643375935439503.35. A real discount
     // is a fraction of the list price, so anything outside 0..1 is not one.
     if (!factor || compare(factor, ZERO) < 0 || compare(factor, ONE) >= 0) continue
-    out.set(discountKey(tagText(block, 'MPG'), tagText(block, 'PriceListName')), factor)
+    const priceList = tagText(block, 'PriceListName')
+    // A row can name a single article instead of a whole product group, and the
+    // configurator looks for that one first (`AdministrationDataExt.GetDiscount`).
+    const article = tagText(block, 'ArticleLongName')
+    const key = article ? articleDiscountKey(article, priceList) : discountKey(tagText(block, 'MPG'), priceList)
+    if (!out.has(key)) out.set(key, factor)
   }
   return out
 }
 
 export function discountKey(mpg: string, priceListName: string): string {
-  return `${mpg}\u0000${priceListName}`
+  return `mpg\u0000${mpg}\u0000${priceListName}`
+}
+
+export function articleDiscountKey(longName: string, priceListName: string): string {
+  return `article\u0000${longName}\u0000${priceListName}`
+}
+
+/**
+ * The discount for one article: by its own name first, then by its product
+ * group, with a blank group meaning the `*` row.
+ */
+export function findDiscount(
+  discounts: Map<string, Dec> | undefined,
+  longName: string,
+  mpg: string,
+  priceListName: string
+): Dec | undefined {
+  if (!discounts) return undefined
+  return (
+    discounts.get(articleDiscountKey(longName, priceListName)) ??
+    discounts.get(discountKey(mpg.trim() === '' ? '*' : mpg, priceListName))
+  )
 }
