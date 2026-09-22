@@ -3,7 +3,7 @@ import { decryptGpcFile } from './decrypt.js'
 import { unpackOpc } from './unpack.js'
 import { parseOrder } from './parseOrder.js'
 import { buildArticlePriceMap, parseCurrencyRates } from './parseConfig.js'
-import { buildLicenseCatalog } from './parseLicenseCatalog.js'
+import { buildLicenseCatalog, buildLicenseCatalogFromConfig } from './parseLicenseCatalog.js'
 import { createBlankOrderXml } from './createBlankOrder.js'
 
 /** Mutates article rows in-place with prices from the config.xml price map. */
@@ -32,6 +32,26 @@ function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof bu
  * SourceFileName (e.g. "PDB285_01-2026"). Absent on very old files, which
  * predate the field.
  */
+/** `ParametersData/VersionName` — the catalog's own name for itself. */
+function readVersionName(configXml: string): string {
+  return /<VersionName>([^<]*)<\/VersionName>/.exec(configXml)?.[1]?.trim() ?? ''
+}
+
+/**
+ * Adds `SourceFileName` to a blank order, in its canonical position after
+ * `PriceList`. Inserted as text rather than through the XML model because the
+ * blank order's formatting is not byte-stable through a re-serialize, and
+ * changing it here would change every new file.
+ */
+function withSourceFileName(orderXml: string, catalog: string): string {
+  if (!catalog || orderXml.includes('<SourceFileName>')) return orderXml
+  const eol = orderXml.includes('\r\n') ? '\r\n' : '\n'
+  return orderXml.replace(
+    `</OrderData>`,
+    `  <SourceFileName>${catalog}</SourceFileName>${eol}</OrderData>`
+  )
+}
+
 function readSourceFileName(orderXml: string): string {
   return /<SourceFileName>([^<]*)<\/SourceFileName>/.exec(orderXml)?.[1]?.trim() ?? ''
 }
@@ -94,7 +114,11 @@ export async function parseDecryptedPackage(
     enrichArticlePrices(order, priceMap)
   }
 
-  const licenseCatalog = buildLicenseCatalog(orderXml)
+  // Prefer the catalog in config.xml; fall back to the legacy copy some older
+  // order files embed.
+  const licenseCatalog = configXml
+    ? buildLicenseCatalogFromConfig(configXml)
+    : buildLicenseCatalog(orderXml)
   const currencyRates = configXml ? parseCurrencyRates(configXml) : {}
 
   return {
@@ -123,10 +147,16 @@ export async function parseDecryptedPackage(
 export async function createNewOrder(
   pdb: { configXml: string; versionXml: string; rawBuffer?: ArrayBuffer } | null
 ): Promise<ParseResult> {
-  const orderXml = createBlankOrderXml()
+  // Record which catalog the order was started from. Every GPC-written file
+  // carries it, and the header reads it to show the current catalog — without
+  // it a new order claims to have none.
+  const catalog = pdb ? readVersionName(pdb.configXml) : ''
+  const orderXml = withSourceFileName(createBlankOrderXml(), catalog)
   const order = parseOrder(orderXml)
 
-  const licenseCatalog = buildLicenseCatalog(orderXml)
+  const licenseCatalog = pdb
+    ? buildLicenseCatalogFromConfig(pdb.configXml)
+    : buildLicenseCatalog(orderXml)
   const currencyRates = pdb ? parseCurrencyRates(pdb.configXml) : {}
 
   const JSZip = (await import('jszip')).default

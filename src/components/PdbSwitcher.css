@@ -1,8 +1,13 @@
-.pdb-switcher { position: relative; display: inline-flex; }
+.pdb-switcher { position: relative; display: inline-flex; align-items: center; }
 
 .pdb-badge {
+  /* Same height as the header's icon and action buttons. */
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  box-sizing: border-box;
   margin-left: .5rem;
-  padding: .12rem .5rem;
+  padding: 0 .6rem;
   border: 1px solid rgba(255, 255, 255, .35);
   border-radius: 999px;
   background: transparent;

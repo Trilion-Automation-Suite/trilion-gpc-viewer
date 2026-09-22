@@ -1,4 +1,12 @@
 /**
+ * The searchable list of software licence items.
+ *
+ * Two sources, because the format moved. Current files keep the catalog in
+ * config.xml and that is where this looks first. Older ones embedded a
+ * <Database> element inside order.xml, and buildLicenseCatalog still reads
+ * that — but modern files omit it, so relying on it alone left the licence
+ * picker empty with nothing to choose from.
+ *
  * Parses the PDB DependentList catalog embedded in order.xml to build a
  * searchable list of software license items.
  *
@@ -7,6 +15,8 @@
  * (not DependentListScreenData) that describe available configuration items.
  * We filter to those with GroupLevel1 = "Software License".
  */
+
+import { sliceSection } from './configScan.js'
 
 export interface LicenseCatalogEntry {
   name: string
@@ -68,4 +78,49 @@ export function buildLicenseCatalog(orderXml: string): LicenseCatalogEntry[] {
 
   entries.sort((a, b) => a.name.localeCompare(b.name))
   return entries
+}
+
+/**
+ * Software-licence configuration items from config.xml.
+ *
+ * Scanned rather than parsed into a DOM: config.xml is around 45 MB and this
+ * runs on every file open.
+ */
+export function buildLicenseCatalogFromConfig(configXml: string): LicenseCatalogEntry[] {
+  const section = sliceSection(configXml, 'ConfigurationItemsData')
+  if (!section) return []
+
+  const entries: LicenseCatalogEntry[] = []
+  const open = '<ConfigurationItem>'
+  const close = '</ConfigurationItem>'
+  let at = 0
+  for (;;) {
+    const start = section.indexOf(open, at)
+    if (start < 0) break
+    const end = section.indexOf(close, start + open.length)
+    if (end < 0) break
+    const block = section.slice(start + open.length, end)
+    at = end + close.length
+
+    const category = tagText(block, 'GroupLevel1')
+    if (category !== 'Software License') continue
+    const name = tagText(block, 'Name')
+    if (!name) continue
+    entries.push({
+      name,
+      category,
+      subCategory: tagText(block, 'GroupLevel2'),
+      sapNr: tagText(block, 'SapNr'),
+    })
+  }
+  entries.sort((a, b) => a.name.localeCompare(b.name))
+  return entries
+}
+
+function tagText(block: string, tag: string): string {
+  const open = `<${tag}>`
+  const start = block.indexOf(open)
+  if (start < 0) return ''
+  const end = block.indexOf(`</${tag}>`, start + open.length)
+  return end < 0 ? '' : block.slice(start + open.length, end).trim()
 }
