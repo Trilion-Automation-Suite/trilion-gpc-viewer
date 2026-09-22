@@ -1,4 +1,3 @@
-import type { ArticleCatalogEntry } from '../lib/parseConfig.js'
 import type { LicenseCatalogEntry } from '../lib/parseLicenseCatalog.js'
 
 export interface AccountDetails {
@@ -192,7 +191,12 @@ export interface ParseResult {
   rawOrderXml: string      // original order.xml text — used to patch + repack on save
   rawDecryptedBuffer: ArrayBuffer  // decrypted ZIP bytes — used to repack on save
   originalItemNos: string[]   // nos of all items as parsed (for delete diffing)
-  articleCatalog: ArticleCatalogEntry[]
+  /**
+   * config.xml, kept so the search catalog can be built on demand. Building it
+   * eagerly meant scanning ~45 MB on every open for a list only the product
+   * search uses.
+   */
+  configXml: string
   licenseCatalog: LicenseCatalogEntry[]
   currencyRates: Record<string, number>  // ISO → EUR-based exchange rate from PDB
   fileHandle?: FileSystemFileHandle

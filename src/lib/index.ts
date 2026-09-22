@@ -2,7 +2,7 @@ import type { OrderSummary, ParseResult } from '../types/order.js'
 import { decryptGpcFile } from './decrypt.js'
 import { unpackOpc } from './unpack.js'
 import { parseOrder } from './parseOrder.js'
-import { buildArticlePriceMap, buildArticleCatalog, parseCurrencyRates } from './parseConfig.js'
+import { buildArticlePriceMap, parseCurrencyRates } from './parseConfig.js'
 import { buildLicenseCatalog } from './parseLicenseCatalog.js'
 import { createBlankOrderXml } from './createBlankOrder.js'
 
@@ -94,7 +94,6 @@ export async function parseDecryptedPackage(
     enrichArticlePrices(order, priceMap)
   }
 
-  const articleCatalog = configXml ? buildArticleCatalog(configXml, order.priceList) : []
   const licenseCatalog = buildLicenseCatalog(orderXml)
   const currencyRates = configXml ? parseCurrencyRates(configXml) : {}
 
@@ -106,7 +105,7 @@ export async function parseDecryptedPackage(
     rawOrderXml: orderXml,
     rawDecryptedBuffer: decrypted,
     originalItemNos: order.items.map(i => i.no),
-    articleCatalog,
+    configXml: configXml ?? '',
     licenseCatalog,
     currencyRates,
     fileHandle,
@@ -127,7 +126,6 @@ export async function createNewOrder(
   const orderXml = createBlankOrderXml()
   const order = parseOrder(orderXml)
 
-  const articleCatalog = pdb ? buildArticleCatalog(pdb.configXml, order.priceList) : []
   const licenseCatalog = buildLicenseCatalog(orderXml)
   const currencyRates = pdb ? parseCurrencyRates(pdb.configXml) : {}
 
@@ -199,7 +197,7 @@ export async function createNewOrder(
     rawOrderXml: orderXml,
     rawDecryptedBuffer: zipBuffer,
     originalItemNos: [],
-    articleCatalog,
+    configXml: pdb?.configXml ?? '',
     licenseCatalog,
     currencyRates,
     fileHandle: undefined,

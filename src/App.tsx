@@ -2,6 +2,8 @@ declare const __APP_VERSION__: string
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
+import type { ArticleCatalogEntry } from './lib/parseConfig.ts'
+import { buildArticleCatalog } from './lib/parseConfig.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
 import { loadPdbCache, addPdbToLibrary, listPdbLibrary, getPdbFromLibrary, pdbVersionName } from './lib/pdbCache.ts'
@@ -451,6 +453,23 @@ export function App() {
     }
   }, [applyConversion])
 
+  /**
+   * The product-search catalog, built the first time it is needed and cached
+   * per (catalog, price list). Scanning the product database takes tens of
+   * milliseconds, which is fine on a click and wasteful on every file open.
+   */
+  const catalogCache = useRef<{ key: string; entries: ArticleCatalogEntry[] } | null>(null)
+  const getArticleCatalog = useCallback((): ArticleCatalogEntry[] => {
+    if (state.status !== 'loaded') return []
+    const configXml = state.result.configXml
+    if (!configXml) return []
+    const key = `${configXml.length}:${order?.priceList ?? ''}`
+    if (catalogCache.current?.key !== key) {
+      catalogCache.current = { key, entries: buildArticleCatalog(configXml, order?.priceList ?? '') }
+    }
+    return catalogCache.current.entries
+  }, [state, order?.priceList])
+
   const loadedFilename =
     state.status === 'loaded' ? state.result.sourceFile : undefined
   const loadedPdb = state.status === 'loaded' ? state.result.pdbVersion : ''
@@ -626,7 +645,7 @@ export function App() {
                   onAddProduct={handleAddProduct}
                   onAddLicense={handleAddLicense}
                   onLicenseUserChange={handleLicenseUserChange}
-                  articleCatalog={state.status === 'loaded' ? state.result.articleCatalog : []}
+                  getArticleCatalog={getArticleCatalog}
                   licenseCatalog={state.status === 'loaded' ? state.result.licenseCatalog : []}
                 />
               )}

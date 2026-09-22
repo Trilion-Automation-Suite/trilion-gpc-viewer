@@ -12,7 +12,8 @@ interface ItemsTabProps {
   onAddProduct: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => void
   onAddLicense: (fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
-  articleCatalog: ArticleCatalogEntry[]
+  /** Built on demand — the catalog costs a scan of the whole product database. */
+  getArticleCatalog: () => ArticleCatalogEntry[]
   licenseCatalog: LicenseCatalogEntry[]
 }
 
@@ -180,7 +181,7 @@ export function ItemsTab({
   onAddProduct,
   onAddLicense,
   onLicenseUserChange,
-  articleCatalog,
+  getArticleCatalog,
   licenseCatalog,
 }: ItemsTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -274,7 +275,7 @@ export function ItemsTab({
         onLicenseUserChange={onLicenseUserChange}
       />
       {activeModal === 'product' && (
-        <SearchProductModal catalog={articleCatalog} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />
+        <SearchProductModal catalog={getArticleCatalog()} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />
       )}
       {activeModal === 'license' && (
         <SearchLicenseModal catalog={licenseCatalog} onAdd={handleAddLicense} onCancel={() => setActiveModal(null)} />
