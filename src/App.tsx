@@ -396,6 +396,7 @@ export function App() {
 
   const loadedFilename =
     state.status === 'loaded' ? state.result.sourceFile : undefined
+  const loadedPdb = state.status === 'loaded' ? state.result.pdbVersion : ''
 
 
   return (
@@ -411,6 +412,11 @@ export function App() {
         {loadedFilename && (
           <span className="filename" title={loadedFilename}>
             {loadedFilename}
+          </span>
+        )}
+        {loadedPdb && (
+          <span className="pdb-badge" title={`Built on product database ${loadedPdb}`}>
+            {loadedPdb}
           </span>
         )}
         <div className="header-right">

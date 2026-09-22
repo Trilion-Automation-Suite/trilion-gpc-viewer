@@ -68,6 +68,7 @@ export async function readContainer(zip: Uint8Array): Promise<GpcContainer> {
 
   const entries: GpcEntry[] = []
   const stamps = new Set<string>()
+  // Counted separately from entries.length: directory entries are read past.
   let p = view.getUint32(eocd + 16, true)
 
   for (let i = 0; i < entryCount; i++) {
@@ -91,8 +92,14 @@ export async function readContainer(zip: Uint8Array): Promise<GpcContainer> {
     }
     stamps.add(`${time}:${date}`)
 
-    // Directory entries would break GPC; .NET never writes them (spec §2).
-    if (name.endsWith('/')) throw new Error(`container: directory entry ${name}`)
+    // .NET never writes directory entries and GPC rejects a file that has them,
+    // but a file produced by a general-purpose zip library does — including this
+    // app's own earlier output. Skipping them on read is what makes such a file
+    // repairable on save; writeContainer never emits one.
+    if (name.endsWith('/')) {
+      p += 46 + nlen + elen + clen
+      continue
+    }
 
     const raw = readLocalData(view, zip, localOffset, name, csize)
     const data =

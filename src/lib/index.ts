@@ -27,6 +27,15 @@ function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof bu
  * Reads a .gconfiguration File, decrypts it, unpacks the OPC container,
  * and parses the order XML into a structured ParseResult.
  */
+/**
+ * The product database an order was built against, recorded in order.xml as
+ * SourceFileName (e.g. "PDB285_01-2026"). Absent on very old files, which
+ * predate the field.
+ */
+function readSourceFileName(orderXml: string): string {
+  return /<SourceFileName>([^<]*)<\/SourceFileName>/.exec(orderXml)?.[1]?.trim() ?? ''
+}
+
 export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle): Promise<ParseResult> {
   // 1. Read file bytes
   const buffer = await file.arrayBuffer()
@@ -79,6 +88,7 @@ export async function loadGpcFile(file: File, fileHandle?: FileSystemFileHandle)
   return {
     order,
     gpcVersion,
+    pdbVersion: readSourceFileName(orderXml),
     sourceFile: file.name,
     rawOrderXml: orderXml,
     rawDecryptedBuffer: decrypted,
@@ -171,6 +181,7 @@ export async function createNewOrder(
   return {
     order,
     gpcVersion: '',
+    pdbVersion: readSourceFileName(orderXml),
     sourceFile: 'New Order.gconfiguration',
     rawOrderXml: orderXml,
     rawDecryptedBuffer: zipBuffer,
