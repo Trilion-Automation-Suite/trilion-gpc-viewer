@@ -6,14 +6,14 @@
  * open is re-targeted in place and stays open for further editing. A catalog the
  * user has loaded once is remembered, so the usual case is two clicks.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PdbLibraryEntry } from '../lib/pdbCache.ts'
 import type { ConversionReport } from '../lib/gpc/convertCatalog.ts'
 import './PdbSwitcher.css'
 
 interface PdbSwitcherProps {
   current: string
-  /** Catalogs already loaded, newest first. */
+  /** Catalog names already cached locally, newest first. */
   library: PdbLibraryEntry[]
   /** Only offered in edit mode — converting changes the order. */
   canConvert: boolean
@@ -28,7 +28,15 @@ export function PdbSwitcher({
   current, library, canConvert, busy, onConvertTo, onLoadCatalog, report, onDismissReport,
 }: PdbSwitcherProps) {
   const [open, setOpen] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const root = useRef<HTMLDivElement>(null)
+
+  const accept = useCallback((file: File | undefined) => {
+    if (!file) return
+    setOpen(false)
+    setDragging(false)
+    onLoadCatalog(file)
+  }, [onLoadCatalog])
 
   useEffect(() => {
     if (!open) return
@@ -60,7 +68,9 @@ export function PdbSwitcher({
         <div className="pdb-menu" role="menu">
           <p className="pdb-menu-head">Switch this order to</p>
           {others.length === 0 && (
-            <p className="pdb-menu-empty">No other catalogs loaded yet.</p>
+            <p className="pdb-menu-empty">
+              No other catalogs yet — load one below and it is kept for next time.
+            </p>
           )}
           {others.map((p) => (
             <button
@@ -73,17 +83,25 @@ export function PdbSwitcher({
               {p.name}
             </button>
           ))}
-          <label className="pdb-menu-load">
+          <label
+            className={`pdb-menu-drop${dragging ? ' pdb-menu-drop-over' : ''}`}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => { e.preventDefault(); accept(e.dataTransfer.files?.[0]) }}
+          >
             <input
               type="file"
-              accept=".gproducts"
-              onChange={(e) => {
-                const f = e.target.files?.[0]
-                e.target.value = ''
-                if (f) { setOpen(false); onLoadCatalog(f) }
-              }}
+              // A .gconfiguration carries the same config.xml as the .gproducts
+              // it was built from — identical catalog, identical version name —
+              // so an existing order is just as good a source.
+              accept=".gproducts,.gconfiguration"
+              onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; accept(f) }}
             />
-            <span>Load a catalog (.gproducts)…</span>
+            <span className="pdb-drop-title">
+              {dragging ? 'Drop to load' : 'Drop a catalog here, or click to browse'}
+            </span>
+            <span className="pdb-drop-hint">.gproducts, or any .gconfiguration</span>
           </label>
         </div>
       )}

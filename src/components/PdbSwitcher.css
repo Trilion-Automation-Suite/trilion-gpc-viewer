@@ -34,8 +34,17 @@
   background: transparent; color: inherit; font: inherit; font-size: .85rem; cursor: pointer;
 }
 .pdb-menu-item:hover { background: rgba(127, 127, 127, .15); }
-.pdb-menu-load { display: block; margin-top: .3rem; padding: .35rem .4rem; border-top: 1px solid var(--border, #e2e2e2); font-size: .8rem; cursor: pointer; }
-.pdb-menu-load input { display: block; width: 100%; margin-top: .3rem; font-size: .75rem; }
+.pdb-menu-drop {
+  display: block; margin-top: .4rem; padding: .7rem .5rem;
+  border: 1px dashed var(--border, #c4c4c4); border-radius: .4rem;
+  text-align: center; cursor: pointer;
+  transition: border-color .12s, background-color .12s;
+}
+.pdb-menu-drop:hover { border-color: var(--accent, #2a7ade); }
+.pdb-menu-drop-over { border-color: var(--accent, #2a7ade); border-style: solid; background: rgba(42, 122, 222, .08); }
+.pdb-menu-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pdb-drop-title { display: block; font-size: .82rem; }
+.pdb-drop-hint { display: block; margin-top: .15rem; font-size: .72rem; opacity: .6; }
 
 .pdb-report {
   position: absolute; top: calc(100% + .35rem); left: .5rem; z-index: 40;

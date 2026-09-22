@@ -73,7 +73,6 @@ export async function clearPdbCache(): Promise<void> {
 export interface PdbLibraryEntry {
   /** Version name from ParametersData, e.g. "PDB290_09-2026". */
   name: string
-  cachedAt: number
 }
 
 /** Version name of a decrypted PDB package, read from its config.xml. */
@@ -92,20 +91,25 @@ export async function addPdbToLibrary(name: string, pdb: CachedPdb): Promise<voi
   })
 }
 
+/**
+ * Names only — deliberately `getAllKeys`, never `getAll`.
+ *
+ * Each stored catalog is the decrypted product database, tens of megabytes. The
+ * dropdown needs names, so reading the records to list them would pull every
+ * catalog into memory on app start.
+ */
 export async function listPdbLibrary(): Promise<PdbLibraryEntry[]> {
   try {
     const db = await openDb()
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(LIBRARY, 'readonly')
-      const store = tx.objectStore(LIBRARY)
-      const keys = store.getAllKeys()
-      const values = store.getAll()
-      tx.oncomplete = () => {
-        const names = keys.result as string[]
-        const entries = values.result as CachedPdb[]
-        resolve(names.map((name, i) => ({ name, cachedAt: entries[i]?.cachedAt ?? 0 })))
+      const req = tx.objectStore(LIBRARY).getAllKeys()
+      req.onsuccess = () => {
+        const names = (req.result as IDBValidKey[]).map(String).filter(Boolean)
+        names.sort((a, b) => b.localeCompare(a))  // newest catalog name first
+        resolve(names.map((name) => ({ name })))
       }
-      tx.onerror = () => reject(tx.error)
+      req.onerror = () => reject(req.error)
     })
   } catch {
     return []

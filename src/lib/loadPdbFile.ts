@@ -40,7 +40,9 @@ export async function loadPdbFile(file: File): Promise<PdbContents> {
   const { configXml, versionXml } = await unpackOpc(zipBuffer)
 
   if (!configXml) {
-    throw new Error('loadPdbFile: config.xml not found in PDB — is this a valid .gproducts file?')
+    throw new Error(
+      'loadPdbFile: no config.xml in this file — expected a .gproducts catalog or a .gconfiguration built from one'
+    )
   }
 
   const currencyRates = configXml ? parseCurrencyRates(configXml) : {}
