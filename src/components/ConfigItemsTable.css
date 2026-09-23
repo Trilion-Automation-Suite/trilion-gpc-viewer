@@ -491,3 +491,78 @@
 .sma-sub-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/*
+ * Dongle rows. GPC draws a maintenance agreement as a group headed by the
+ * dongle, and the serial and term live on that row, so that is where they are
+ * edited — the article rows below are derived from it.
+ */
+.sma-dongle {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 6px;
+  background: var(--surface-2, rgba(0, 0, 0, 0.02));
+}
+
+.sma-dongle-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: flex-end;
+}
+
+.sma-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sma-input {
+  min-width: 150px;
+  padding: 5px 7px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #c8c8c8);
+  border-radius: 4px;
+}
+
+.sma-add {
+  position: relative;
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.sma-add-results {
+  flex-basis: 100%;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 4px;
+  background: var(--surface, #fff);
+}
+
+.sma-btn {
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 0.82rem;
+  color: inherit;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #c8c8c8);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sma-btn:hover {
+  background: var(--surface-2, rgba(0, 0, 0, 0.04));
+}
+
+.sma-btn-remove {
+  color: var(--danger, #b3261e);
+  border-color: currentColor;
+}

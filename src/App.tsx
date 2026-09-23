@@ -1,12 +1,24 @@
 declare const __APP_VERSION__: string
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
+import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
 import type { ArticleCatalogEntry } from './lib/parseConfig.ts'
 import { buildArticleCatalog } from './lib/parseConfig.ts'
 import { parseOrder } from './lib/parseOrder.ts'
 import { parseOrderXml, serializeOrderXml } from './lib/gpc/orderXml.ts'
-import { addSmaExtension } from './lib/gpc/sma.ts'
+import {
+  addSmaExtension,
+  addSmaExtensionToDongle,
+  removeSmaExtension,
+  setSmaContract,
+  smaListName,
+  smaOptions,
+} from './lib/gpc/sma.ts'
+import type { SmaContractEdit } from './lib/gpc/sma.ts'
+import { addLicense, licenseOptionsFromConfig } from './lib/gpc/licenses.ts'
+import type { LicenseOption } from './lib/gpc/licenses.ts'
+import { readPdbConfig } from './lib/gpc/blankOrder.ts'
+import type { OrderDocument } from './lib/gpc/orderXml.ts'
 import { addCatalogArticle } from './lib/gpc/addItem.ts'
 import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
@@ -31,11 +43,6 @@ import { PdbSwitcher } from './components/PdbSwitcher.tsx'
 import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
 import './App.css'
-
-function nextItemNo(items: ConfigItem[]): string {
-  const topLevel = items.filter(i => !i.isSub).map(i => parseInt(i.no, 10)).filter(n => !isNaN(n))
-  return String(topLevel.length > 0 ? Math.max(...topLevel) + 1 : 1)
-}
 
 type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc'
 const TAB_LABELS: Record<Tab, string> = {
@@ -223,6 +230,91 @@ export function App() {
    * The insertion happens here, against order.xml, rather than at save time, so
    * what the table shows is what the file contains.
    */
+  /**
+   * Commits a mutated order document back into state.
+   *
+   * Every structural edit goes through here: serialize, reparse, keep `loadId`
+   * so the sync effect leaves the result alone, and mark the file dirty.
+   */
+  const applyDocument = useCallback((doc: OrderDocument) => {
+    setState(prev => {
+      if (prev.status !== 'loaded') return prev
+      const orderXml = new TextDecoder().decode(serializeOrderXml(doc))
+      const parsed = parseOrder(orderXml)
+      setOrder(parsed)
+      return { ...prev, result: { ...prev.result, rawOrderXml: orderXml, order: parsed } }
+    })
+    setIsDirty(true)
+  }, [])
+
+  /**
+   * The licences a catalog offers, which are options inside its dependent
+   * lists rather than a flat list. Built on demand and cached, like the article
+   * catalog — walking the lists costs a parse of the product database.
+   */
+  const licenseCache = useRef<{ key: string; entries: LicenseOption[] } | null>(null)
+  const getLicenseCatalog = useCallback((): LicenseOption[] => {
+    if (state.status !== 'loaded' || !state.result.configXml) return []
+    const configXml = state.result.configXml
+    const key = String(configXml.length)
+    if (licenseCache.current?.key !== key) {
+      licenseCache.current = { key, entries: licenseOptionsFromConfig(catalogContainer(configXml)) }
+    }
+    return licenseCache.current.entries
+  }, [state])
+
+  /** Changes a dongle row's serial, its term or its licence user. */
+  const handleSmaContractChange = useCallback((dongleIndex: number, patch: SmaContractEdit) => {
+    if (state.status !== 'loaded' || !state.result.configXml) return
+    setAddItemError(null)
+    try {
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      setSmaContract(doc, catalogContainer(state.result.configXml), dongleIndex, patch)
+      applyDocument(doc)
+    } catch (err) {
+      setAddItemError(err instanceof Error ? err.message : String(err))
+    }
+  }, [state, applyDocument])
+
+  /** Puts another agreement on a dongle already on the order. */
+  const handleAddSmaExtension = useCallback((dongleIndex: number, articleName: string) => {
+    if (state.status !== 'loaded' || !state.result.configXml) return
+    setAddItemError(null)
+    try {
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      addSmaExtensionToDongle(doc, catalogContainer(state.result.configXml), dongleIndex, articleName)
+      applyDocument(doc)
+    } catch (err) {
+      setAddItemError(err instanceof Error ? err.message : String(err))
+    }
+  }, [state, applyDocument])
+
+  /** Takes an agreement off a dongle row. */
+  const handleRemoveSmaExtension = useCallback((dongleIndex: number, articleName: string) => {
+    if (state.status !== 'loaded' || !state.result.configXml) return
+    setAddItemError(null)
+    try {
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      removeSmaExtension(doc, catalogContainer(state.result.configXml), dongleIndex, articleName)
+      applyDocument(doc)
+    } catch (err) {
+      setAddItemError(err instanceof Error ? err.message : String(err))
+    }
+  }, [state, applyDocument])
+
+  /** The agreements `SMA_EXT` offers, for the per-dongle picker. */
+  const getSmaCatalog = useCallback((): string[] => {
+    if (state.status !== 'loaded' || !state.result.configXml) return []
+    try {
+      const config = readPdbConfig(catalogContainer(state.result.configXml))
+      return smaOptions(config, smaListName(config))
+        .filter(o => o.sectionName !== 'License model')
+        .map(o => o.articleName)
+    } catch {
+      return []
+    }
+  }, [state])
+
   const handleAddProduct = useCallback((fields: AddProductFields) => {
     if (state.status !== 'loaded' || !state.result.configXml) {
       setAddItemError('Cannot add a product without the product database this order was built on.')
@@ -258,47 +350,28 @@ export function App() {
     }
   }, [state])
 
-  const handleAddLicense = useCallback((fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => {
-    setOrder(prev => {
-      if (!prev) return null
-      const licenseNo = nextItemNo(prev.items)
-      const smaNo = `${licenseNo}.1`
-      const licenseItem: ConfigItem = {
-        no: licenseNo,
-        label: `Configuration item ${licenseNo}`,
-        category: 'Software License',
-        name: fields.name,
-        systemType: '',
-        totalMsrp: null,
-        totalDp: null,
-        discountOverride: null,
-        isHidden: false,
-        isSub: false,
-        itemType: 'dependent',
-        isNew: true,
-        sections: [],
-      }
-      const smaItem: ConfigItem = {
-        no: smaNo,
-        label: `SMA for ${fields.name}`,
-        category: 'Software License',
-        name: 'SMA',
-        systemType: '',
-        totalMsrp: null,
-        totalDp: null,
-        discountOverride: null,
-        isHidden: false,
-        isSub: true,
-        itemType: 'sub',
-        isNew: true,
-        sections: [],
+  const handleAddLicense = useCallback((fields: { option: LicenseOption; userZeissId: string; userName: string }) => {
+    if (state.status !== 'loaded' || !state.result.configXml) {
+      setAddItemError('Cannot add a license without the product database this order was built on.')
+      return
+    }
+    setAddItemError(null)
+    try {
+      // A licence is an option inside a dependent list, so adding one means
+      // adding the line that owns it with that option selected. The previous
+      // version only added rows to the in-memory summary, which the save path
+      // had no way to write.
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      addLicense(doc, catalogContainer(state.result.configXml), fields.option, {
         userZeissId: fields.userZeissId,
         userName: fields.userName,
-      }
-      return { ...prev, items: [...prev.items, licenseItem, smaItem] }
-    })
-    setIsDirty(true)
-  }, [])
+      })
+      applyDocument(doc)
+    } catch (err) {
+      setAddItemError(err instanceof Error ? err.message : String(err))
+    }
+  }, [state, applyDocument])
+
 
   const handleLicenseUserChange = useCallback((no: string, patch: { userZeissId?: string; userName?: string }) => {
     setOrder(prev => prev ? { ...prev, items: prev.items.map(i => i.no === no ? { ...i, ...patch } : i) } : null)
@@ -692,7 +765,11 @@ export function App() {
                   onAddLicense={handleAddLicense}
                   onLicenseUserChange={handleLicenseUserChange}
                   getArticleCatalog={getArticleCatalog}
-                  licenseCatalog={state.status === 'loaded' ? state.result.licenseCatalog : []}
+                  getLicenseCatalog={getLicenseCatalog}
+                  getSmaCatalog={getSmaCatalog}
+                  onSmaContractChange={handleSmaContractChange}
+                  onAddSmaExtension={handleAddSmaExtension}
+                  onRemoveSmaExtension={handleRemoveSmaExtension}
                 />
               )}
               {tab === 'account' && (

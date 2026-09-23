@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { OrderSummary } from '../types/order.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
-import type { LicenseCatalogEntry } from '../lib/parseLicenseCatalog.ts'
+import type { LicenseOption } from '../lib/gpc/licenses.ts'
 import { ConfigItemsTable } from './ConfigItemsTable.tsx'
 import './ItemsTab.css'
 
@@ -10,11 +10,17 @@ interface ItemsTabProps {
   isEditing: boolean
   onDelete: (no: string) => void
   onAddProduct: (fields: AddProductFields) => void
-  onAddLicense: (fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => void
+  onAddLicense: (fields: { option: LicenseOption; userZeissId: string; userName: string }) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
   /** Built on demand — the catalog costs a scan of the whole product database. */
   getArticleCatalog: () => ArticleCatalogEntry[]
-  licenseCatalog: LicenseCatalogEntry[]
+  /** Built on demand, like the article catalog: it walks the dependent lists. */
+  getLicenseCatalog: () => LicenseOption[]
+  /** Agreements `SMA_EXT` offers, for the per-dongle picker. */
+  getSmaCatalog: () => string[]
+  onSmaContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onAddSmaExtension: (dongleIndex: number, articleName: string) => void
+  onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
 }
 
 type ModalType = 'product' | 'license' | null
@@ -204,29 +210,29 @@ function SearchLicenseModal({
   onAdd,
   onCancel,
 }: {
-  catalog: LicenseCatalogEntry[]
-  onAdd: (fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => void
+  catalog: LicenseOption[]
+  onAdd: (fields: { option: LicenseOption; userZeissId: string; userName: string }) => void
   onCancel: () => void
 }) {
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<LicenseCatalogEntry | null>(null)
+  const [selected, setSelected] = useState<LicenseOption | null>(null)
   const [userZeissId, setUserZeissId] = useState('licensing@trilion.com')
   const [userName, setUserName] = useState('Trilion Licensing')
 
   const filtered = query.trim().length < 2
     ? []
-    : catalog.filter(e => e.name.toLowerCase().includes(query.toLowerCase())).slice(0, 50)
+    : catalog.filter(e => e.articleName.toLowerCase().includes(query.toLowerCase())).slice(0, 50)
 
-  function handleSelect(entry: LicenseCatalogEntry) {
+  function handleSelect(entry: LicenseOption) {
     setSelected(entry)
-    setQuery(entry.name)
+    setQuery(entry.articleName)
   }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const item = selected ?? (filtered.length === 1 ? filtered[0] : null)
     if (!item || !userZeissId.trim() || !userName.trim()) return
-    onAdd({ name: item.name, sapNr: item.sapNr, userZeissId: userZeissId.trim(), userName: userName.trim() })
+    onAdd({ option: item, userZeissId: userZeissId.trim(), userName: userName.trim() })
   }
 
   return (
@@ -247,17 +253,17 @@ function SearchLicenseModal({
           {filtered.length > 0 && !selected && (
             <div className="modal-search-results">
               {filtered.map(e => (
-                <div key={e.sapNr || e.name} className="modal-search-row" onClick={() => handleSelect(e)}>
-                  <span className="modal-search-name">{e.name}</span>
-                  {e.subCategory && <span className="modal-search-meta"><span className="modal-search-sap">{e.subCategory}</span></span>}
+                <div key={`${e.itemName}/${e.articleName}`} className="modal-search-row" onClick={() => handleSelect(e)}>
+                  <span className="modal-search-name">{e.articleName}</span>
+                  <span className="modal-search-meta"><span className="modal-search-sap">{e.itemName}</span></span>
                 </div>
               ))}
             </div>
           )}
           {selected && (
             <div className="modal-selected">
-              <span className="modal-selected-name">{selected.name}</span>
-              {selected.sapNr && <span className="modal-search-sap">{selected.sapNr}</span>}
+              <span className="modal-selected-name">{selected.articleName}</span>
+              <span className="modal-search-sap">{selected.itemName} &middot; {selected.sectionName}</span>
             </div>
           )}
           <label className="modal-label" style={{ marginTop: 8 }}>
@@ -286,7 +292,11 @@ export function ItemsTab({
   onAddLicense,
   onLicenseUserChange,
   getArticleCatalog,
-  licenseCatalog,
+  getLicenseCatalog,
+  getSmaCatalog,
+  onSmaContractChange,
+  onAddSmaExtension,
+  onRemoveSmaExtension,
 }: ItemsTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -311,7 +321,7 @@ export function ItemsTab({
     setActiveModal(null)
   }
 
-  function handleAddLicense(fields: { name: string; sapNr: string; userZeissId: string; userName: string }) {
+  function handleAddLicense(fields: { option: LicenseOption; userZeissId: string; userName: string }) {
     onAddLicense(fields)
     setActiveModal(null)
   }
@@ -377,12 +387,16 @@ export function ItemsTab({
         isEditing={isEditing}
         onDelete={onDelete}
         onLicenseUserChange={onLicenseUserChange}
+        smaCatalog={getSmaCatalog()}
+        onSmaContractChange={onSmaContractChange}
+        onAddSmaExtension={onAddSmaExtension}
+        onRemoveSmaExtension={onRemoveSmaExtension}
       />
       {activeModal === 'product' && (
         <SearchProductModal catalog={getArticleCatalog()} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />
       )}
       {activeModal === 'license' && (
-        <SearchLicenseModal catalog={licenseCatalog} onAdd={handleAddLicense} onCancel={() => setActiveModal(null)} />
+        <SearchLicenseModal catalog={getLicenseCatalog()} onAdd={handleAddLicense} onCancel={() => setActiveModal(null)} />
       )}
     </div>
   )

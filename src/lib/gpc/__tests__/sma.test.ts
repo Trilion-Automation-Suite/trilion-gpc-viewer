@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { parseOrderXml, serializeOrderXml } from '../orderXml.ts'
 import { catalogContainer } from '../catalogContainer.ts'
-import { addSmaExtension, contractDates, defaultLicenseModel, donglesInScreen } from '../sma.ts'
-import { findSupportItem } from '../addItem.ts'
+import {
+  addSmaExtension,
+  addSmaExtensionToDongle,
+  contractDates,
+  defaultLicenseModel,
+  removeSmaDongle,
+  removeSmaExtension,
+  setSmaContract,
+  smaDongles,
+} from '../sma.ts'
 import { readPdbConfig } from '../blankOrder.ts'
 import { validateOrderXml, describeViolations } from '../validateOrder.ts'
 
@@ -55,14 +63,45 @@ const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
         <Sections>
           <Section>
             <LongName>License model</LongName>
+            <Selection>
+              <SelectionMode>ExactlyOne</SelectionMode>
+            </Selection>
             <Articles>
               <SectionArticle>
                 <LongName>PC bound</LongName>
+                <Step>1</Step>
                 <DefaultAmount>0</DefaultAmount>
               </SectionArticle>
               <SectionArticle>
                 <LongName>External Dongle without System</LongName>
+                <Step>1</Step>
                 <DefaultAmount>1</DefaultAmount>
+              </SectionArticle>
+            </Articles>
+          </Section>
+          <Section>
+            <LongName>Software Maintenance Agreement for Sensor Drivers</LongName>
+            <Selection>
+              <SelectionMode>MinXMaxY</SelectionMode>
+            </Selection>
+            <Articles>
+              <SectionArticle>
+                <LongName>EXT SMA for Sensor Driver ARAMIS</LongName>
+                <Step>1</Step>
+                <DefaultAmount>0</DefaultAmount>
+              </SectionArticle>
+            </Articles>
+          </Section>
+          <Section>
+            <LongName>Software Maintenance Agreement for Pro and Pro Line</LongName>
+            <Selection>
+              <SelectionMode>ZeroOrOne</SelectionMode>
+            </Selection>
+            <Articles>
+              <SectionArticle>
+                <LongName>EXT SMA for ZEISS CORRELATE - Pro Line</LongName>
+                <Step>1</Step>
+                <DefaultAmount>0</DefaultAmount>
               </SectionArticle>
             </Articles>
           </Section>
@@ -106,7 +145,7 @@ const rows = (xml: string) =>
 
 describe('software maintenance agreements', () => {
   it('runs the new term from the day after the old one ends', () => {
-    expect(contractDates({ dongleId: 'x', endOldContract: '2026-04-30' })).toEqual({
+    expect(contractDates({ endOldContract: '2026-04-30' })).toEqual({
       endOldContract: '2026-04-30T00:00:00',
       startNewContract: '2026-05-01T00:00:00',
       endNewContract: '2027-04-30T00:00:00',
@@ -114,17 +153,17 @@ describe('software maintenance agreements', () => {
   })
 
   it('crosses a year boundary', () => {
-    const dates = contractDates({ dongleId: 'x', endOldContract: '2026-12-31' })
+    const dates = contractDates({ endOldContract: '2026-12-31' })
     expect(dates.startNewContract).toBe('2027-01-01T00:00:00')
     expect(dates.endNewContract).toBe('2027-12-31T00:00:00')
   })
 
   it('takes the licence model the catalog marks as default', () => {
     const config = readPdbConfig(catalogContainer(CONFIG))
-    expect(defaultLicenseModel(config, findSupportItem(config))).toBe('External Dongle without System')
+    expect(defaultLicenseModel(config)).toBe('External Dongle without System')
   })
 
-  it('creates the licence-model row the agreement hangs from', () => {
+  it('creates the dongle row GPC draws the group from', () => {
     const { order, pdb } = build()
     addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', {
       dongleId: '3-7619774',
@@ -133,63 +172,114 @@ describe('software maintenance agreements', () => {
       licenseUserName: 'Trilion Licensing',
     })
     const xml = xmlOf(order)
-    const built = rows(xml)
 
-    // The dongle row comes first — without it GPC shows an empty category.
-    expect(built.map((r) => r.name)).toEqual([
+    // The dongle row itself: without it GPC shows an empty category, however
+    // many SupportArticle entries the file contains.
+    expect(xml).toContain('<ItemType>DongleList</ItemType>')
+    expect(xml).toContain('<WorksheetArticleFilter>SMA_EXT</WorksheetArticleFilter>')
+    expect(xml).toContain('<DongleId>3-7619774</DongleId>')
+
+    const [dongle] = smaDongles(order)
+    expect(dongle.dongleId).toBe('3-7619774')
+    expect(dongle.startNewContract).toBe('2026-05-01T00:00:00')
+    expect(dongle.endNewContract).toBe('2027-04-30T00:00:00')
+    expect(dongle.endOldContract).toBe('2026-04-30T00:00:00')
+    expect(dongle.selected).toEqual([
+      { sectionName: 'License model', articleName: 'External Dongle without System', amount: '1' },
+      { sectionName: 'Software Maintenance Agreement for Sensor Drivers', articleName: 'EXT SMA for Sensor Driver ARAMIS', amount: '1' },
+    ])
+
+    // The article rows are derived from it, licence model first.
+    expect(rows(xml).map((r) => r.name)).toEqual([
       'External Dongle without System',
       'EXT SMA for Sensor Driver ARAMIS',
     ])
-    // Every row repeats the dongle and the term.
-    for (const row of built) {
+    for (const row of rows(xml)) {
       expect(row.dongle).toBe('3-7619774')
       expect(row.start).toBe('2026-05-01T00:00:00')
       expect(row.endNew).toBe('2027-04-30T00:00:00')
-      expect(row.endOld).toBe('2026-04-30T00:00:00')
     }
     expect(xml).toContain('<Reply1>licensing@trilion.com</Reply1>')
     expect(xml).toContain('<Reply2>Trilion Licensing</Reply2>')
-    expect(xml).toContain('<ItemType>Supportextension</ItemType>')
-    expect(xml).toContain('<Name>Software Maintenance Agreement</Name>')
     expect(describeViolations(validateOrderXml(xml))).toBe('')
   })
 
-  it('does not repeat the licence-model row for a dongle already covered', () => {
+  it('writes the whole option tree, selected or not', () => {
     const { order, pdb } = build()
-    const contract = { dongleId: '3-7619774', endOldContract: '2026-04-30' }
-    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', contract)
-    addSmaExtension(order, pdb, 'EXT SMA for ZEISS CORRELATE - Pro Line', contract)
-    expect(rows(xmlOf(order)).map((r) => r.name)).toEqual([
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: 'd1', endOldContract: '2026-04-30' })
+    const xml = xmlOf(order)
+    // Every option the list offers is recorded, which is what the configurator
+    // writes and what lets the operator change the choice later.
+    expect(xml).toContain('<Name>PC bound</Name>')
+    expect(xml).toContain('<Name>EXT SMA for ZEISS CORRELATE - Pro Line</Name>')
+    const [dongle] = smaDongles(order)
+    expect(dongle.selected.map((s) => s.articleName)).not.toContain('PC bound')
+  })
+
+  it('puts a second agreement on the same dongle row', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: '3-7619774', endOldContract: '2026-04-30' })
+    addSmaExtensionToDongle(order, pdb, 0, 'EXT SMA for ZEISS CORRELATE - Pro Line')
+
+    expect(smaDongles(order)).toHaveLength(1)
+    expect(smaDongles(order)[0].selected.map((s) => s.articleName)).toEqual([
       'External Dongle without System',
       'EXT SMA for Sensor Driver ARAMIS',
       'EXT SMA for ZEISS CORRELATE - Pro Line',
     ])
+    expect(rows(xmlOf(order))).toHaveLength(3)
   })
 
-  it('gives a second dongle its own licence-model row', () => {
+  it('takes an agreement off again', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, ['EXT SMA for Sensor Driver ARAMIS', 'EXT SMA for ZEISS CORRELATE - Pro Line'], {
+      dongleId: '3-7619774', endOldContract: '2026-04-30',
+    })
+    removeSmaExtension(order, pdb, 0, 'EXT SMA for ZEISS CORRELATE - Pro Line')
+    expect(rows(xmlOf(order)).map((r) => r.name)).toEqual([
+      'External Dongle without System',
+      'EXT SMA for Sensor Driver ARAMIS',
+    ])
+  })
+
+  it('will not remove the licence model, which is what the group hangs from', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: 'd1', endOldContract: '2026-04-30' })
+    expect(() => removeSmaExtension(order, pdb, 0, 'External Dongle without System')).toThrow(/licence model/)
+  })
+
+  it('changes the dongle and the term, and re-derives the article rows', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: 'old-id', endOldContract: '2026-04-30' })
+    setSmaContract(order, pdb, 0, { dongleId: '3-9999999', endOldContract: '2027-06-30' })
+
+    const [dongle] = smaDongles(order)
+    expect(dongle.dongleId).toBe('3-9999999')
+    expect(dongle.startNewContract).toBe('2027-07-01T00:00:00')
+    expect(dongle.endNewContract).toBe('2028-06-30T00:00:00')
+    // The dates are copied onto every derived row, so they must move too.
+    for (const row of rows(xmlOf(order))) {
+      expect(row.dongle).toBe('3-9999999')
+      expect(row.start).toBe('2027-07-01T00:00:00')
+      expect(row.endNew).toBe('2028-06-30T00:00:00')
+    }
+  })
+
+  it('gives a second dongle its own row', () => {
     const { order, pdb } = build()
     addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: '3-7619774', endOldContract: '2026-04-30' })
     addSmaExtension(order, pdb, 'EXT SMA for ZEISS CORRELATE - Pro Line', { dongleId: '3-8000001', endOldContract: '2026-04-30' })
-    expect(rows(xmlOf(order)).map((r) => r.name)).toEqual([
-      'External Dongle without System',
-      'EXT SMA for Sensor Driver ARAMIS',
-      'External Dongle without System',
-      'EXT SMA for ZEISS CORRELATE - Pro Line',
-    ])
-    const screen = order.root.members.find((m) => m.name === 'SupportArticlesData')?.value
-    if (screen?.kind !== 'element') throw new Error('no support screen')
-    const first = screen.members[0].value
-    if (first.kind !== 'element') throw new Error('no screen data')
-    expect(donglesInScreen(first)).toEqual(['3-7619774', '3-8000001'])
+    expect(smaDongles(order).map((d) => d.dongleId)).toEqual(['3-7619774', '3-8000001'])
+    expect(rows(xmlOf(order))).toHaveLength(4)
   })
 
-  it('adds several agreements for one dongle in one go', () => {
+  it('removes a dongle row and everything on it', () => {
     const { order, pdb } = build()
-    addSmaExtension(order, pdb, ['EXT SMA for Sensor Driver ARAMIS', 'EXT SMA for ZEISS CORRELATE - Pro Line'], {
-      dongleId: '3-7619774',
-      endOldContract: '2026-04-30',
-    })
-    expect(rows(xmlOf(order))).toHaveLength(3)
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: 'a', endOldContract: '2026-04-30' })
+    addSmaExtension(order, pdb, 'EXT SMA for ZEISS CORRELATE - Pro Line', { dongleId: 'b', endOldContract: '2026-04-30' })
+    removeSmaDongle(order, pdb, 0)
+    expect(smaDongles(order).map((d) => d.dongleId)).toEqual(['b'])
+    expect(rows(xmlOf(order))).toHaveLength(2)
   })
 
   it('refuses to build an agreement with no dongle', () => {

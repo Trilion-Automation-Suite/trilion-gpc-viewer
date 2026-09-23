@@ -1,27 +1,28 @@
 /**
  * Software Maintenance Agreements.
  *
- * An SMA line is not a single article. The catalog's `SMA_EXT` dependent list
- * says what one is made of: a **License model** section, `ExactlyOne`,
- * defaulting to "External Dongle without System", followed by the extension
- * sections that hold the actual agreements.
+ * A maintenance agreement is a **dongle row**, and a dongle row is a
+ * `DependentListSupportScreenData`: a synthetic `DongleList` configuration item
+ * holding the whole `SMA_EXT` option tree, plus the dongle id and the contract
+ * term. The `SupportArticle` entries under `SoftwareSupportArticles` are
+ * derived from it — `refreshSupportArticles` rebuilds them from the selections
+ * every time, which is what the configurator does.
  *
- * That license-model article is the row the configurator's UI groups
- * everything else under. Adding an extension on its own produces a line that
- * opens in GPC as an empty category — there is nothing for the extension to
- * hang from. The reference file shows the shape plainly: a zero-priced
- * "External Dongle without System" entry, then the extensions, every one of
- * them repeating the same `SensorSnDongleId` and the same three contract dates.
+ * Writing those article rows without the dongle row, as this module first did,
+ * gives GPC a category with nothing in it: the rows exist but the row that owns
+ * them, carries the dongle and draws the group does not.
  *
- * The dongle id and the dates are operator input. Nothing in the catalog knows
- * them, and GPC asks for them on the screen — along with the licence user's
- * email and name, which it stores as the line's `Reply1` and `Reply2` and
- * prompts for through the configuration item's `Question1` and `Question2`.
+ * Several agreements on one dongle are several selected options in one dongle
+ * row, not several rows. Two rows means two dongles — or the same dongle
+ * deliberately configured twice, which the reference file also shows.
  */
 import type { GpcContainer } from './container.ts'
 import type { ElementValue, OrderDocument } from './orderXml.ts'
 import { readPdbConfig } from './blankOrder.ts'
-import { addSupportArticle, ensureSupportScreen, findSupportItem, plainSupportFilter } from './addItem.ts'
+import { findSupportItem, plainSupportFilter, refreshSupportArticles } from './addItem.ts'
+import { addDependentListSupport } from './dependentList.ts'
+import type { DependentListSelection } from './dependentList.ts'
+import { findOption, sectionDefault } from './catalogIndex.ts'
 
 /** The section of `SMA_EXT` that chooses how the licence is held. */
 const LICENSE_MODEL_SECTION = 'License model'
@@ -37,7 +38,7 @@ export interface SmaContract {
   /** Overrides the derived dates when a line does not follow the usual term. */
   startNewContract?: string
   endNewContract?: string
-  /** Stored as `Reply1` / `Reply2`; GPC prompts for both. */
+  /** Stored as the support screen's `Reply1` / `Reply2`; GPC prompts for both. */
   licenseUserEmail?: string
   licenseUserName?: string
   /** Defaults to the licence model the catalog marks as default. */
@@ -51,8 +52,7 @@ function dateTime(day: string): string {
 
 function shiftDays(day: string, days: number): string {
   const [y, m, d] = day.slice(0, 10).split('-').map(Number)
-  const at = new Date(Date.UTC(y, m - 1, d + days))
-  return at.toISOString().slice(0, 10)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
 function addYear(day: string): string {
@@ -60,8 +60,8 @@ function addYear(day: string): string {
   return new Date(Date.UTC(y + 1, m - 1, d)).toISOString().slice(0, 10)
 }
 
-/** The three dates a support line carries, derived from the old contract's end. */
-export function contractDates(contract: SmaContract): {
+/** The three dates a dongle row carries, derived from the old contract's end. */
+export function contractDates(contract: Pick<SmaContract, 'endOldContract' | 'startNewContract' | 'endNewContract'>): {
   startNewContract: string
   endNewContract: string
   endOldContract: string
@@ -74,12 +74,9 @@ export function contractDates(contract: SmaContract): {
   }
 }
 
-function sectionsOf(list: ElementValue): ElementValue[] {
-  const sections = list.members.find((m) => m.name === 'Sections')?.value
-  if (!sections || sections.kind !== 'element') return []
-  return sections.members
-    .map((m) => m.value)
-    .filter((v): v is ElementValue => v.kind === 'element')
+function sub(e: ElementValue, name: string): ElementValue | null {
+  const v = e.members.find((m) => m.name === name)?.value
+  return v && v.kind === 'element' ? v : null
 }
 
 function text(e: ElementValue, name: string): string | null {
@@ -87,63 +84,100 @@ function text(e: ElementValue, name: string): string | null {
   return v && v.kind === 'text' ? (v.value ?? null) : null
 }
 
-/**
- * The licence-model article the catalog defaults to — the one section article
- * with a non-zero `DefaultAmount`.
- *
- * Read rather than hard-coded: "External Dongle without System" is PDB290's
- * default, not a law, and the section also offers "PC bound" and
- * "Floating License".
- */
-export function defaultLicenseModel(config: ElementValue, supportItem: ElementValue): string {
-  const wanted = plainSupportFilter(supportItem)
-  const data = config.members.find((m) => m.name === 'DependentListsData')?.value
-  const lists = data && data.kind === 'element'
-    ? data.members.find((m) => m.name === 'DependentLists')?.value
-    : null
-  if (!lists || lists.kind !== 'element') throw new Error('sma: catalog has no DependentLists')
+function kids(e: ElementValue | null): ElementValue[] {
+  if (!e) return []
+  return e.members.map((m) => m.value).filter((v): v is ElementValue => v.kind === 'element')
+}
 
-  for (const member of lists.members) {
-    const list = member.value
-    if (list.kind !== 'element' || text(list, 'DependentListName') !== wanted) continue
-    for (const section of sectionsOf(list)) {
-      if (text(section, 'LongName') !== LICENSE_MODEL_SECTION) continue
-      const articles = section.members.find((m) => m.name === 'Articles')?.value
-      if (!articles || articles.kind !== 'element') break
-      let first: string | null = null
-      for (const entry of articles.members) {
-        if (entry.value.kind !== 'element') continue
-        const name = text(entry.value, 'LongName')
-        if (!name) continue
-        first ??= name
-        if ((text(entry.value, 'DefaultAmount') ?? '0') !== '0') return name
+/** The order's support screen, or null before one exists. */
+function supportScreen(order: OrderDocument): ElementValue | null {
+  const list = order.root.members.find((m) => m.name === 'SupportArticlesData')?.value
+  if (!list || list.kind !== 'element') return null
+  return kids(list)[0] ?? null
+}
+
+/** The dongle rows in the order, in file order. */
+export function smaDongleRows(order: OrderDocument): ElementValue[] {
+  const screen = supportScreen(order)
+  return screen ? kids(sub(screen, 'DependentListSupportScreenDatas')) : []
+}
+
+/** One dongle row, flattened for display and editing. */
+export interface SmaDongleView {
+  /** Position in `DependentListSupportScreenDatas`; how the editors address it. */
+  index: number
+  dongleId: string
+  startNewContract: string
+  endNewContract: string
+  endOldContract: string
+  totalMsrp: string
+  totalDp: string
+  /** The options switched on, licence model included. */
+  selected: Array<{ sectionName: string; articleName: string; amount: string }>
+}
+
+export function smaDongles(order: OrderDocument): SmaDongleView[] {
+  return smaDongleRows(order).map((row, index) => {
+    const selected: SmaDongleView['selected'] = []
+    for (const section of kids(sub(row, 'Sections'))) {
+      const sectionName = text(section, 'Name') ?? ''
+      for (const option of kids(sub(section, 'SectionArticles'))) {
+        const amount = text(option, 'Amount') ?? '0'
+        if (amount !== '0') {
+          selected.push({ sectionName, articleName: text(option, 'Name') ?? '', amount })
+        }
       }
-      if (first) return first
+    }
+    return {
+      index,
+      dongleId: text(row, 'DongleId') ?? '',
+      startNewContract: text(row, 'StartNewContract') ?? '',
+      endNewContract: text(row, 'EndNewContract') ?? '',
+      endOldContract: text(row, 'EndOldContract') ?? '',
+      totalMsrp: text(row, 'TotalMsrp') ?? '0',
+      totalDp: text(row, 'TotalDp') ?? '0',
+      selected,
+    }
+  })
+}
+
+/** The `SMA_EXT` list name, taken from the catalog's support item. */
+export function smaListName(config: ElementValue): string {
+  return plainSupportFilter(findSupportItem(config))
+}
+
+/**
+ * Turns an option on or off inside a dongle row.
+ *
+ * `UserChoice` is what the configurator writes for anything the operator picked
+ * and `None` for anything left alone; the licence model keeps `Default`,
+ * because the catalog is what turned it on.
+ */
+function setOption(row: ElementValue, sectionName: string, articleName: string, amount: string, mode: string): boolean {
+  for (const section of kids(sub(row, 'Sections'))) {
+    if (text(section, 'Name') !== sectionName) continue
+    for (const option of kids(sub(section, 'SectionArticles'))) {
+      if (text(option, 'Name') !== articleName) continue
+      for (const member of option.members) {
+        if (member.name === 'Amount') member.value = { kind: 'text', type: null, value: amount }
+        if (member.name === 'AmountMode') member.value = { kind: 'text', type: null, value: mode }
+      }
+      return true
     }
   }
-  throw new Error(`sma: ${wanted} has no ${JSON.stringify(LICENSE_MODEL_SECTION)} section`)
+  return false
 }
 
-/** Every dongle id already covered by a line in the support screen. */
-export function donglesInScreen(screen: ElementValue): string[] {
-  const list = screen.members.find((m) => m.name === 'SoftwareSupportArticles')?.value
-  if (!list || list.kind !== 'element') return []
-  const ids: string[] = []
-  for (const member of list.members) {
-    if (member.value.kind !== 'element') continue
-    const id = text(member.value, 'SensorSnDongleId')
-    if (id && !ids.includes(id)) ids.push(id)
-  }
-  return ids
+function setText(e: ElementValue, name: string, value: string): void {
+  const member = e.members.find((m) => m.name === name)
+  if (member) member.value = { kind: 'text', type: null, value }
 }
 
 /**
- * Adds one or more SMA extensions for a dongle, creating the licence-model row
- * the first time that dongle appears.
+ * Adds a dongle row with the given agreements on it.
  *
- * Returns the order. Adding a second extension for a dongle already on the
- * order does not repeat its licence-model row, which is what the reference
- * file shows: one row per dongle group, extensions after it.
+ * `dongleIndex` adds to an existing row instead, which is how a second
+ * agreement joins a dongle already on the order.
  */
 export function addSmaExtension(
   order: OrderDocument,
@@ -156,23 +190,169 @@ export function addSmaExtension(
   if (names.length === 0) throw new Error('sma: no articles to add')
 
   const config = readPdbConfig(pdb)
+  const listName = smaListName(config)
   const dates = contractDates(contract)
-  const options = {
-    list: 'SoftwareSupportArticles' as const,
-    sensorSnDongleId: contract.dongleId,
+
+  const model =
+    contract.licenseModel ?? sectionDefault(config, listName, LICENSE_MODEL_SECTION)?.articleName
+  const selections: DependentListSelection[] = []
+  if (model) {
+    selections.push({
+      sectionName: LICENSE_MODEL_SECTION,
+      articleName: model,
+      amount: '1',
+      // The catalog turned this on, not the operator — unless they changed it.
+      amountMode: contract.licenseModel ? 'UserChoice' : 'Default',
+    })
+  }
+  for (const name of names) {
+    const option = findOption(config, listName, name)
+    selections.push({
+      sectionName: option.sectionName,
+      articleName: option.articleName,
+      amount: '1',
+      amountMode: 'UserChoice',
+    })
+  }
+
+  addDependentListSupport(order, pdb, {
     ...dates,
+    dongleId: contract.dongleId,
+    selections,
     replyEmail: contract.licenseUserEmail,
     replyName: contract.licenseUserName,
-  }
-
-  // Creating the screen here rather than letting the first add do it, so the
-  // licence-model row can be placed before anything else on a new line.
-  const screen = ensureSupportScreen(order, config, options)
-  if (!donglesInScreen(screen).includes(contract.dongleId)) {
-    const model = contract.licenseModel ?? defaultLicenseModel(config, findSupportItem(config))
-    addSupportArticle(order, pdb, model, options)
-  }
-
-  for (const name of names) addSupportArticle(order, pdb, name, options)
+  })
   return order
 }
+
+/**
+ * Adds agreements to a dongle row already on the order.
+ *
+ * The row's option tree is edited in place and the article rows rebuilt from
+ * it, so the result is the same as if both had been chosen at once.
+ */
+export function addSmaExtensionToDongle(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  dongleIndex: number,
+  articleNames: string | string[]
+): OrderDocument {
+  const rows = smaDongleRows(order)
+  const row = rows[dongleIndex]
+  if (!row) throw new Error(`sma: the order has no dongle row ${dongleIndex}`)
+  const config = readPdbConfig(pdb)
+  const listName = smaListName(config)
+
+  for (const name of Array.isArray(articleNames) ? articleNames : [articleNames]) {
+    const option = findOption(config, listName, name)
+    if (!setOption(row, option.sectionName, option.articleName, '1', 'UserChoice')) {
+      throw new Error(`sma: dongle row has no option ${JSON.stringify(name)}`)
+    }
+  }
+  rebuild(order, pdb, config)
+  return order
+}
+
+/** Switches an agreement off. The licence model cannot be removed this way. */
+export function removeSmaExtension(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  dongleIndex: number,
+  articleName: string
+): OrderDocument {
+  const row = smaDongleRows(order)[dongleIndex]
+  if (!row) throw new Error(`sma: the order has no dongle row ${dongleIndex}`)
+  const config = readPdbConfig(pdb)
+  const option = findOption(config, smaListName(config), articleName)
+  if (option.sectionName === LICENSE_MODEL_SECTION) {
+    throw new Error('sma: the licence model is what the agreement hangs from and cannot be removed')
+  }
+  setOption(row, option.sectionName, option.articleName, '0', 'None')
+  rebuild(order, pdb, config)
+  return order
+}
+
+/** Removes a dongle row and everything on it. */
+export function removeSmaDongle(order: OrderDocument, pdb: GpcContainer, dongleIndex: number): OrderDocument {
+  const screen = supportScreen(order)
+  const list = screen ? sub(screen, 'DependentListSupportScreenDatas') : null
+  if (!screen || !list) throw new Error('sma: the order has no support screen')
+  const elements = list.members.filter((m) => m.value.kind === 'element')
+  const target = elements[dongleIndex]
+  if (!target) throw new Error(`sma: the order has no dongle row ${dongleIndex}`)
+  list.members = list.members.filter((m) => m !== target)
+  rebuild(order, pdb, readPdbConfig(pdb))
+  return order
+}
+
+export interface SmaContractEdit {
+  dongleId?: string
+  endOldContract?: string
+  startNewContract?: string
+  endNewContract?: string
+  licenseUserEmail?: string
+  licenseUserName?: string
+}
+
+/**
+ * Changes a dongle row's serial or its term.
+ *
+ * The dates live on the dongle row *and* on every article row derived from it,
+ * so the article rows are rebuilt rather than patched — the single place they
+ * come from is the row itself.
+ */
+export function setSmaContract(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  dongleIndex: number,
+  edit: SmaContractEdit
+): OrderDocument {
+  const row = smaDongleRows(order)[dongleIndex]
+  if (!row) throw new Error(`sma: the order has no dongle row ${dongleIndex}`)
+
+  if (edit.dongleId !== undefined) setText(row, 'DongleId', edit.dongleId)
+  if (edit.endOldContract !== undefined || edit.startNewContract !== undefined || edit.endNewContract !== undefined) {
+    const dates = contractDates({
+      endOldContract: edit.endOldContract ?? (text(row, 'EndOldContract') ?? '').slice(0, 10),
+      startNewContract: edit.startNewContract,
+      endNewContract: edit.endNewContract,
+    })
+    setText(row, 'StartNewContract', dates.startNewContract)
+    setText(row, 'EndNewContract', dates.endNewContract)
+    setText(row, 'EndOldContract', dates.endOldContract)
+  }
+
+  const screen = supportScreen(order)
+  if (screen) {
+    if (edit.licenseUserEmail !== undefined) setText(screen, 'Reply1', edit.licenseUserEmail)
+    if (edit.licenseUserName !== undefined) setText(screen, 'Reply2', edit.licenseUserName)
+  }
+  rebuild(order, pdb, readPdbConfig(pdb))
+  return order
+}
+
+/** Rebuilds the derived article rows and the screen totals. */
+function rebuild(order: OrderDocument, _pdb: GpcContainer, config: ElementValue): void {
+  const screen = supportScreen(order)
+  if (screen) refreshSupportArticles(screen, config)
+}
+
+/** Kept for callers that only want to know which dongles are already covered. */
+export function donglesInScreen(screen: ElementValue): string[] {
+  const ids: string[] = []
+  for (const row of kids(sub(screen, 'DependentListSupportScreenDatas'))) {
+    const id = text(row, 'DongleId')
+    if (id && !ids.includes(id)) ids.push(id)
+  }
+  return ids
+}
+
+/** The licence-model option the catalog defaults to. */
+export function defaultLicenseModel(config: ElementValue): string {
+  const option = sectionDefault(config, smaListName(config), LICENSE_MODEL_SECTION)
+  if (!option) throw new Error(`sma: SMA_EXT has no ${JSON.stringify(LICENSE_MODEL_SECTION)} section`)
+  return option.articleName
+}
+
+/** Everything `SMA_EXT` offers, for a picker. */
+export { listOptions as smaOptions } from './catalogIndex.ts'

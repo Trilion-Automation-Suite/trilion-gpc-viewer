@@ -1,5 +1,5 @@
-import { Fragment } from 'react'
-import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails } from '../types/order.ts'
+import { Fragment, useState } from 'react'
+import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentList } from '../types/order.ts'
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import './ConfigItemsTable.css'
 
@@ -10,6 +10,11 @@ interface ConfigItemsTableProps {
   isEditing: boolean
   onDelete: (no: string) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
+  /** Agreements `SMA_EXT` offers, for the per-dongle picker. */
+  smaCatalog: string[]
+  onSmaContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onAddSmaExtension: (dongleIndex: number, articleName: string) => void
+  onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
 }
 
 function calcMargin(msrp: number | null, dp: number | null): number | null {
@@ -188,28 +193,151 @@ function fmtDate(iso: string): string {
   return iso.slice(0, 10)
 }
 
+/**
+ * A dongle row and the agreements on it.
+ *
+ * The dongle row is what GPC draws the group from, so it is what the operator
+ * edits: the serial and the term live on it, and every article row underneath
+ * is derived. Changing either re-derives them, which is why these controls
+ * commit through the document rather than the summary.
+ */
+function DongleRowEditor({
+  dongle,
+  index,
+  isEditing,
+  smaCatalog,
+  onContractChange,
+  onAddExtension,
+}: {
+  dongle: SmaDependentList
+  index: number
+  isEditing: boolean
+  smaCatalog: string[]
+  onContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onAddExtension: (dongleIndex: number, articleName: string) => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const matches = query.trim().length < 2
+    ? []
+    : smaCatalog.filter(name => name.toLowerCase().includes(query.toLowerCase())).slice(0, 25)
+
+  return (
+    <div className="sma-dongle">
+      <div className="sma-dongle-head">
+        {isEditing ? (
+          <>
+            <label className="sma-field">
+              <span className="sma-info-label">Dongle S/N</span>
+              <input
+                className="sma-input sma-mono"
+                value={dongle.dongleId}
+                placeholder="3-7619774"
+                onChange={e => onContractChange(index, { dongleId: e.target.value })}
+              />
+            </label>
+            <label className="sma-field">
+              <span className="sma-info-label">Current agreement ends</span>
+              <input
+                className="sma-input"
+                type="date"
+                value={fmtDate(dongle.endOldContract)}
+                onChange={e => e.target.value && onContractChange(index, { endOldContract: e.target.value })}
+              />
+            </label>
+            <div className="sma-field">
+              <span className="sma-info-label">New term</span>
+              <span className="sma-info-value">
+                {fmtDate(dongle.startNewContract)} &rarr; {fmtDate(dongle.endNewContract)}
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="sma-field">
+              <span className="sma-info-label">Dongle S/N</span>
+              <span className="sma-info-value sma-mono">{dongle.dongleId || '—'}</span>
+            </div>
+            <div className="sma-field">
+              <span className="sma-info-label">Term</span>
+              <span className="sma-info-value">
+                {fmtDate(dongle.startNewContract)} &rarr; {fmtDate(dongle.endNewContract)}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {isEditing && (
+        <div className="sma-add">
+          {adding ? (
+            <>
+              <input
+                className="sma-input"
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search agreements for this dongle..."
+              />
+              {matches.length > 0 && (
+                <div className="sma-add-results">
+                  {matches.map(name => (
+                    <div
+                      key={name}
+                      className="modal-search-row"
+                      onClick={() => { onAddExtension(index, name); setAdding(false); setQuery('') }}
+                    >
+                      <span className="modal-search-name">{name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" className="sma-btn" onClick={() => { setAdding(false); setQuery('') }}>Cancel</button>
+            </>
+          ) : (
+            <button type="button" className="sma-btn" onClick={() => setAdding(true)}>
+              + Agreement on this dongle
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SmaDetailPanel({
   sma,
   dec,
   colSpan,
+  isEditing,
+  smaCatalog,
+  onContractChange,
+  onAddExtension,
+  onRemoveExtension,
 }: {
   sma: SmaDetails
   dec: number
   colSpan: number
+  isEditing: boolean
+  smaCatalog: string[]
+  onContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onAddExtension: (dongleIndex: number, articleName: string) => void
+  onRemoveExtension: (dongleIndex: number, articleName: string) => void
 }) {
   const pricedArticles = sma.softwareArticles.filter(a => a.msrp !== null && a.msrp !== 0)
 
-  // Collect unique dongle IDs
-  const dongles = Array.from(new Set(
-    sma.softwareArticles.map(a => a.dongleId).filter(Boolean),
-  )).sort()
+  /** Which dongle row an article row came from, so Remove addresses the right one. */
+  function dongleIndexOf(dongleId: string): number {
+    const found = sma.dependentLists.findIndex(d => d.dongleId === dongleId)
+    return found < 0 ? 0 : found
+  }
 
   return (
     <tr className="sma-detail-row">
       <td className="sma-detail-indent" />
       <td colSpan={colSpan - 1}>
         <div className="sma-panel">
-          {/* Header: user info + dongle */}
           <div className="sma-info-grid">
             {sma.email && (
               <div className="sma-info-item">
@@ -223,15 +351,20 @@ function SmaDetailPanel({
                 <span className="sma-info-value">{sma.userName}</span>
               </div>
             )}
-            {dongles.length > 0 && (
-              <div className="sma-info-item">
-                <span className="sma-info-label">Dongle S/N</span>
-                <span className="sma-info-value sma-mono">{dongles.join(', ')}</span>
-              </div>
-            )}
           </div>
 
-          {/* Software articles table with per-row dates */}
+          {sma.dependentLists.map((dongle, i) => (
+            <DongleRowEditor
+              key={i}
+              dongle={dongle}
+              index={i}
+              isEditing={isEditing}
+              smaCatalog={smaCatalog}
+              onContractChange={onContractChange}
+              onAddExtension={onAddExtension}
+            />
+          ))}
+
           {pricedArticles.length > 0 && (
             <table className="sma-sub-table">
               <thead>
@@ -243,6 +376,7 @@ function SmaDetailPanel({
                   <th>Contract End</th>
                   <th>New Start</th>
                   <th>New End</th>
+                  {isEditing && <th />}
                 </tr>
               </thead>
               <tbody>
@@ -255,6 +389,18 @@ function SmaDetailPanel({
                     <td>{fmtDate(art.endOldContract)}</td>
                     <td>{fmtDate(art.startNewContract)}</td>
                     <td>{fmtDate(art.endNewContract)}</td>
+                    {isEditing && (
+                      <td>
+                        <button
+                          type="button"
+                          className="sma-btn sma-btn-remove"
+                          title="Remove this agreement"
+                          onClick={() => onRemoveExtension(dongleIndexOf(art.dongleId), art.name)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -274,6 +420,10 @@ function ItemRow({
   isEditing,
   onDelete,
   onLicenseUserChange,
+  smaCatalog,
+  onSmaContractChange,
+  onAddSmaExtension,
+  onRemoveSmaExtension,
 }: {
   item: ConfigItem
   expanded: boolean
@@ -282,6 +432,10 @@ function ItemRow({
   isEditing: boolean
   onDelete: (no: string) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
+  smaCatalog: string[]
+  onSmaContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onAddSmaExtension: (dongleIndex: number, articleName: string) => void
+  onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
 }) {
   const margin = calcMargin(item.totalMsrp, item.totalDp)
 
@@ -344,7 +498,18 @@ function ItemRow({
           {(item.userZeissId !== undefined || item.userName !== undefined) && (
             <UserFieldsRow item={item} isEditing={isEditing} onLicenseUserChange={onLicenseUserChange} colSpan={colSpan} />
           )}
-          {hasSma && <SmaDetailPanel sma={item.sma!} dec={dec} colSpan={colSpan} />}
+          {hasSma && (
+            <SmaDetailPanel
+              sma={item.sma!}
+              dec={dec}
+              colSpan={colSpan}
+              isEditing={isEditing}
+              smaCatalog={smaCatalog}
+              onContractChange={onSmaContractChange}
+              onAddExtension={onAddSmaExtension}
+              onRemoveExtension={onRemoveSmaExtension}
+            />
+          )}
           {item.sections.length > 0 && <SectionRows sections={item.sections} dec={dec} colSpan={colSpan} />}
         </>
       )}
@@ -352,7 +517,18 @@ function ItemRow({
   )
 }
 
-export function ConfigItemsTable({ order, expanded, onToggle, isEditing, onDelete, onLicenseUserChange }: ConfigItemsTableProps) {
+export function ConfigItemsTable({
+  order,
+  expanded,
+  onToggle,
+  isEditing,
+  onDelete,
+  onLicenseUserChange,
+  smaCatalog,
+  onSmaContractChange,
+  onAddSmaExtension,
+  onRemoveSmaExtension,
+}: ConfigItemsTableProps) {
   const visibleItems = order.items.filter((i) => !i.isHidden)
   const totals = visibleItems.reduce(
     (acc, item) => ({
@@ -403,6 +579,10 @@ export function ConfigItemsTable({ order, expanded, onToggle, isEditing, onDelet
                 isEditing={isEditing}
                 onDelete={onDelete}
                 onLicenseUserChange={onLicenseUserChange}
+                smaCatalog={smaCatalog}
+                onSmaContractChange={onSmaContractChange}
+                onAddSmaExtension={onAddSmaExtension}
+                onRemoveSmaExtension={onRemoveSmaExtension}
               />
             )
           })}
