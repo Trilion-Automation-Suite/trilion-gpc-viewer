@@ -65,6 +65,8 @@ export interface AddLicenseOptions {
   userZeissId?: string
   userName?: string
   amount?: number
+  /** Overrides the order's own `PriceList` for this line's pricing. */
+  priceListName?: string
 }
 
 /**
@@ -83,6 +85,7 @@ export function addLicense(
   return addDependentList(order, pdb, option.itemName, {
     reply1: options.userZeissId,
     reply2: options.userName,
+    ...(options.priceListName ? { priceListName: options.priceListName } : {}),
     selections: [
       {
         sectionName: option.sectionName,

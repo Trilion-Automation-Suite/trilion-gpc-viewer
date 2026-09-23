@@ -13,6 +13,7 @@ import type { GpcContainer } from './container.ts'
 import type { OrderDocument } from './orderXml.ts'
 import type { OrderSummary } from '../../types/order.js'
 import { addCatalogArticle, recalculateOrder } from './addItem.ts'
+import { setMember } from './orderXml.ts'
 import { addLicense } from './licenses.ts'
 import { addSmaExtension } from './sma.ts'
 import type { OrderBlockPlan } from './orderBlock.ts'
@@ -37,6 +38,16 @@ export function applyOrderBlockItems(
 ): ApplyReport {
   const report: ApplyReport = { added: [], failed: [] }
 
+  // The block's price list governs, and it has to be on the document before
+  // anything is priced: every article's Msrp and Dp are read from the row with
+  // this name. It is written onto the order too, not merely passed to the
+  // pricing, because `patchOrderXml` deliberately never touches PriceList — a
+  // save must not rewrite it — so the document is the only place it can land.
+  const priceList = plan.block.priceList
+  if (priceList) {
+    setMember(order.root, 'OrderData', 'PriceList', { kind: 'text', type: null, value: priceList })
+  }
+
   for (const entry of plan.items) {
     const resolved = entry.resolved
     if (!resolved) {
@@ -45,12 +56,16 @@ export function applyOrderBlockItems(
     }
     try {
       if (resolved.kind === 'article') {
-        addCatalogArticle(order, pdb, resolved.articleName, { amount: resolved.amount })
+        addCatalogArticle(order, pdb, resolved.articleName, {
+          amount: resolved.amount,
+          ...(priceList ? { priceListName: priceList } : {}),
+        })
         report.added.push(`${resolved.amount} × ${resolved.articleName}`)
       } else if (resolved.kind === 'license') {
         addLicense(order, pdb, resolved.option, {
           userZeissId: resolved.userEmail,
           userName: resolved.userName,
+          ...(priceList ? { priceListName: priceList } : {}),
         })
         report.added.push(`Licence ${resolved.option.articleName}`)
       } else {

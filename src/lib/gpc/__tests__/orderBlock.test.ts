@@ -400,3 +400,38 @@ describe('quantities', () => {
     expect(plan.items[0].problem).toMatch(/whole number/)
   })
 })
+
+describe('the block decides the price list', () => {
+  /** An order whose PriceList is empty — which is what a stripped file looks like. */
+  const ORDER_NO_PRICELIST = ORDER.replace('<PriceList>Partner</PriceList>', '<PriceList />')
+
+  it('prices against the block when the order names none', () => {
+    const order = parseOrderXml(new TextEncoder().encode(ORDER_NO_PRICELIST))
+    const pdb = catalogContainer(CONFIG)
+    const plan = planOrderBlock(
+      { ...BLOCK, priceList: 'Partner', items: [{ type: 'article', name: 'Calibration Panel CPA30/210' }] },
+      pdb
+    )
+    const report = applyOrderBlockItems(order, pdb, plan)
+    // Before this, every item failed with "order has no PriceList" — the block
+    // said Partner and nothing looked at it.
+    expect(report.failed).toEqual([])
+    expect(report.added).toEqual(['1 × Calibration Panel CPA30/210'])
+  })
+
+  it('writes it onto the order, since a save will not', () => {
+    const order = parseOrderXml(new TextEncoder().encode(ORDER_NO_PRICELIST))
+    const pdb = catalogContainer(CONFIG)
+    applyOrderBlockItems(order, pdb, planOrderBlock({ ...BLOCK, priceList: 'Partner', items: [] }, pdb))
+    expect(new TextDecoder().decode(serializeOrderXml(order))).toContain('<PriceList>Partner</PriceList>')
+  })
+
+  it('still says something useful when neither has one', () => {
+    const order = parseOrderXml(new TextEncoder().encode(ORDER_NO_PRICELIST))
+    const pdb = catalogContainer(CONFIG)
+    const block = { ...BLOCK, items: [{ type: 'article' as const, name: 'Calibration Panel CPA30/210' }] }
+    delete (block as { priceList?: string }).priceList
+    const report = applyOrderBlockItems(order, pdb, planOrderBlock(block, pdb))
+    expect(report.failed[0].problem).toMatch(/no price list to price against/)
+  })
+})

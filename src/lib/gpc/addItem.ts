@@ -242,7 +242,11 @@ export function addFreeListLine(
   const item = findFreeListItem(config, articles[0])
 
   const priceListName = options.priceListName ?? orderField(order, 'PriceList')
-  if (!priceListName) throw new Error('addItem: order has no PriceList')
+  if (!priceListName) {
+    throw new Error(
+      'addItem: no price list to price against — the order\'s <PriceList> is empty and none was supplied'
+    )
+  }
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
 
@@ -640,7 +644,11 @@ export function addFreeArticle(
   const item = findFreeArticlesItem(config, article)
 
   const priceListName = options.priceListName ?? orderField(order, 'PriceList')
-  if (!priceListName) throw new Error('addItem: order has no PriceList')
+  if (!priceListName) {
+    throw new Error(
+      'addItem: no price list to price against — the order\'s <PriceList> is empty and none was supplied'
+    )
+  }
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
   const configText = pdbConfigXml(pdb)
@@ -758,7 +766,11 @@ export function addSupportArticle(
   }
 
   const priceListName = options.priceListName ?? orderField(order, 'PriceList')
-  if (!priceListName) throw new Error('addItem: order has no PriceList')
+  if (!priceListName) {
+    throw new Error(
+      'addItem: no price list to price against — the order\'s <PriceList> is empty and none was supplied'
+    )
+  }
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
   const configText = pdbConfigXml(pdb)
