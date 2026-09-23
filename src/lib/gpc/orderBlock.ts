@@ -102,6 +102,9 @@ export function decodeOrderBlock(text: string): OrderBlock {
   const trimmed = text.trim()
   if (!trimmed) throw new OrderBlockError('Nothing pasted.')
 
+  const fromBase64 = (body: string): string =>
+    new TextDecoder().decode(Uint8Array.from(atob(body), (c) => c.charCodeAt(0)))
+
   let json = trimmed
   const begin = trimmed.indexOf(BEGIN)
   if (begin >= 0) {
@@ -109,9 +112,22 @@ export function decodeOrderBlock(text: string): OrderBlock {
     if (end < 0) throw new OrderBlockError(`The block is missing its ${END} line — was it cut short?`)
     const body = trimmed.slice(begin + BEGIN.length, end).replace(/\s+/g, '')
     try {
-      json = new TextDecoder().decode(Uint8Array.from(atob(body), (c) => c.charCodeAt(0)))
+      json = fromBase64(body)
     } catch {
       throw new OrderBlockError('The block is not valid base64. Copy it again, whole.')
+    }
+  } else if (!trimmed.startsWith('{')) {
+    // The envelope lines go missing more easily than one would think — a chat
+    // client that strips a leading dash, a selection that started on the second
+    // line. The body alone is still unambiguous, so read it rather than
+    // complain about a marker the person never saw. Be exact about what we
+    // write, tolerant about what we read.
+    try {
+      json = fromBase64(trimmed.replace(/\s+/g, ''))
+    } catch {
+      throw new OrderBlockError(
+        `This does not look like a GPC order block — it has no ${BEGIN} line and is not base64.`
+      )
     }
   }
 

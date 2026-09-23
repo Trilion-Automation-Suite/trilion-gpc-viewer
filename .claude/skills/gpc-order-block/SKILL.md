@@ -82,9 +82,21 @@ defeats it. Tell the user when:
   `alessandro.vieira@boeing.com`. Use the spelling the e-mail implies and say
   you did.
 - You matched a loosely-worded product to a specific catalog article.
-- A dongle id is missing and you used a placeholder.
 - The term has a gap.
 - You guessed at a country, a state or a price list.
+
+## Never put a placeholder inside the block
+
+The block is base64. Once encoded, a `REPLACE-ME` is invisible — the user sees
+a wall of characters and pastes it, and the placeholder reaches the order.
+
+So there is nothing to substitute later. If a dongle id, or anything else
+mandatory, is missing: **stop and ask for it.** Producing a block that needs
+editing is worse than producing none, because it looks finished.
+
+When you do hand over a block, show the JSON alongside it, folded or in a code
+block. It costs a few lines and it is the only way the person can see what they
+are about to paste.
 
 ## Defaults
 

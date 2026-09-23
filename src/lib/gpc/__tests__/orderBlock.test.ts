@@ -349,3 +349,21 @@ describe('values GPC has to recognise', () => {
     }
   })
 })
+
+describe('blocks that arrive damaged', () => {
+  const body = () => envelope(BLOCK).split('\n').slice(1, -1).join('\n')
+
+  it('reads the base64 body when the envelope lines are gone', () => {
+    // A chat client that eats a line of dashes, or a selection that began on
+    // the second line. The body alone is unambiguous.
+    expect(decodeOrderBlock(body()).gpcOrder).toBe(ORDER_BLOCK_VERSION)
+  })
+
+  it('reads it as one unwrapped line too', () => {
+    expect(decodeOrderBlock(body().replace(/\n/g, '')).catalog).toBe('PDB290_09-2026')
+  })
+
+  it('still says something useful about text that is neither', () => {
+    expect(() => decodeOrderBlock('Dear Bob,\n\nplease find attached')).toThrow(/does not look like a GPC order block/)
+  })
+})
