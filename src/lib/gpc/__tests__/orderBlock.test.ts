@@ -389,3 +389,14 @@ describe('JSON pasted out of a chat window', () => {
     expect(block.account?.companyName).toBe('Zeiss — Oberkochen')
   })
 })
+
+describe('quantities', () => {
+  it('refuses a fraction — GPC counts articles in whole units', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock(
+      { ...BLOCK, items: [{ type: 'article', name: 'Calibration Panel CPA30/210', amount: 2.5 }] },
+      pdb
+    )
+    expect(plan.items[0].problem).toMatch(/whole number/)
+  })
+})

@@ -301,8 +301,16 @@ export function planOrderBlock(block: OrderBlock, pdb: GpcContainer, openCatalog
         const found = resolveArticle(config, bySap, item)
         if ('problem' in found) return { index, item, problem: found.problem }
         const amount = Number(item.amount ?? 1)
-        if (!Number.isFinite(amount) || amount < 1) {
-          return { index, item, problem: `Amount ${JSON.stringify(item.amount)} is not a positive number.` }
+        // GPC declares OrderArticle.Amount as an int, so a fraction cannot be
+        // represented at all — it would be truncated on the way in and the
+        // order would quietly be for a different quantity. Refused, so
+        // whoever sent it decides what the whole number should be.
+        if (!Number.isInteger(amount) || amount < 1) {
+          return {
+            index,
+            item,
+            problem: `Amount ${JSON.stringify(item.amount)} is not a whole number of 1 or more. GPC counts articles in whole units.`,
+          }
         }
         return { index, item, resolved: { kind: 'article', articleName: found.articleName, amount } }
       }

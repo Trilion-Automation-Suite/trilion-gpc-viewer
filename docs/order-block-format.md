@@ -125,7 +125,9 @@ article — and it is also why the vendor rows are dated: ZEISS numbers and
 prices move between PDB releases, so a generator should read the row valid for
 the order and set `catalog` to the release it belongs to.
 
-`amount` defaults to 1.
+`amount` is a **whole number**, defaulting to 1. GPC declares it as an `int`,
+so a fraction cannot be represented: a block carrying one is refused rather
+than rounded, because rounding it silently would order a different quantity.
 
 ### `license` — a software licence
 
