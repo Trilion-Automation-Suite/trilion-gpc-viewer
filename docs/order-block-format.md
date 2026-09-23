@@ -106,10 +106,21 @@ be matched is **reported, not guessed** — a paste never silently drops a line.
 { "type": "article", "name": "Calibration Panel CPA30/210", "amount": 2 }
 ```
 
-`sapNr` is preferred: it survives a rename and is what an ERP already holds.
-`name` is the catalog `LongName` and is used when the SAP number is absent or
-matches nothing. Give both and the SAP number wins, with the name used to
-disambiguate if it matches more than one article.
+`sapNr` is the **ZEISS** SAP number — the one the GPC catalog keys articles on,
+not an internal SKU. In Odoo it is the vendor product code on the ZEISS vendor
+line (`product.supplierinfo.product_code`, the Purchase tab), so a generator
+reads it from there rather than from the product's own reference.
+
+It is preferred over the name because it survives a rename, and catalogs do
+rename articles between releases. `name` is the catalog `LongName` and is used
+when the SAP number is absent or matches nothing.
+
+Give both. A SAP number that matches exactly one article is used on its own;
+one that matches several is settled by the name, and refused if no name was
+given. That case is real — PDB290 has SAP numbers shared by more than one
+article — and it is also why the vendor rows are dated: ZEISS numbers and
+prices move between PDB releases, so a generator should read the row valid for
+the order and set `catalog` to the release it belongs to.
 
 `amount` defaults to 1.
 
