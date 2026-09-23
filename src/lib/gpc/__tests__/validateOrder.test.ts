@@ -4,6 +4,7 @@ import { parseOrder } from '../../parseOrder.js'
 import { patchOrderXml } from '../../patchOrder.js'
 import { describeViolations, validateOrderXml } from '../validateOrder.ts'
 import { MEMBER_ORDER } from '../memberOrder.ts'
+import { dotNetLocalTimestamp, startOrderFromCatalogBlank } from '../../newOrderXml.js'
 
 /**
  * The failure these guard against shipped three times. Every version wrote an
@@ -90,5 +91,51 @@ describe('order.xml must match the declarations', () => {
     expect(MEMBER_ORDER.AccountDetailsData[0]).toBe('AccountNumber')
     expect(MEMBER_ORDER.LocalTechnicalContact[0]).toBe('AcademicDegree')
     expect(MEMBER_ORDER.OrderAdministration[0]).toBe('InvoiceAccountNumber')
+  })
+})
+
+describe('a new order starts from the catalog, not a template', () => {
+  it('dates a blank order the way .NET does', () => {
+    const stamp = dotNetLocalTimestamp(new Date(2026, 8, 18, 11, 28, 10, 738))
+    // Local time with an offset and seven fractional digits, as every
+    // reference file writes it — not toISOString's UTC with three.
+    expect(stamp).toMatch(/^2026-09-18T11:28:10\.7380000[-+]\d{2}:\d{2}$/)
+  })
+
+  it('changes GPC\'s own blank order only where a new order must', () => {
+    const blank = [
+      '<?xml version="1.0" encoding="utf-8"?>',
+      '<OrderData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">',
+      '  <AccountDetailsData>',
+      '    <IsDistributor>false</IsDistributor>',
+      '    <IsNewCustomer>false</IsNewCustomer>',
+      '  </AccountDetailsData>',
+      '  <CleanOrder>false</CleanOrder>',
+      '  <CreationDate>2026-09-18T11:28:10.7381171-07:00</CreationDate>',
+      '  <DiscountSplitCurrencyShare xsi:nil="true" />',
+      '  <EndDate xsi:nil="true" />',
+      '  <LastModified>2026-09-18T11:28:10.7381171-07:00</LastModified>',
+      '  <OrderStatus>Editing</OrderStatus>',
+      '  <PriceList>Partner</PriceList>',
+      '  <Username>Direct_Solutions_Partner</Username>',
+      '</OrderData>',
+    ].join('\r\n')
+
+    const started = startOrderFromCatalogBlank(blank, {
+      catalog: 'PDB290_09-2026',
+      root: { Distributor: '2104995' },
+      now: new Date(2026, 8, 22, 9, 0, 0, 0),
+    })
+
+    expect(describeViolations(validateOrderXml(started))).toBe('')
+    // Distributor belongs after DiscountSplitCurrencyShare and before EndDate.
+    expect(started.indexOf('<Distributor>')).toBeGreaterThan(started.indexOf('<DiscountSplitCurrencyShare'))
+    expect(started.indexOf('<Distributor>')).toBeLessThan(started.indexOf('<EndDate'))
+    // SourceFileName belongs before Username.
+    expect(started.indexOf('<SourceFileName>')).toBeLessThan(started.indexOf('<Username>'))
+    // Everything else is untouched, xsi:nil included.
+    expect(started).toContain('<EndDate xsi:nil="true" />')
+    expect(started).toContain('<Username>Direct_Solutions_Partner</Username>')
+    expect(started).not.toContain('2026-09-18T11:28:10')
   })
 })

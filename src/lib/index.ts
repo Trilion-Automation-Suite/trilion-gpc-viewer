@@ -8,6 +8,7 @@ import { METHOD_DEFLATE, METHOD_STORED, readContainer, writeContainer } from './
 import type { GpcEntry } from './gpc/container.ts'
 import { buildContentTypes, buildRels } from './gpc/writeGpcFile.ts'
 import { createBlankOrderXml } from './createBlankOrder.js'
+import { catalogBlankOrder, startOrderFromCatalogBlank } from './newOrderXml.js'
 
 /** Mutates article rows in-place with prices from the config.xml price map. */
 function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof buildArticlePriceMap>): void {
@@ -42,16 +43,18 @@ function relationshipId(): string {
   return 'R' + [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+/** Trilion's GOM Partner ID, the one value a new order does not inherit. */
+const TRILION_DISTRIBUTOR_ID = '2104995'
+
 /** `ParametersData/VersionName` — the catalog's own name for itself. */
 function readVersionName(configXml: string): string {
   return /<VersionName>([^<]*)<\/VersionName>/.exec(configXml)?.[1]?.trim() ?? ''
 }
 
 /**
- * Adds `SourceFileName` to a blank order, in its canonical position after
- * `PriceList`. Inserted as text rather than through the XML model because the
- * blank order's formatting is not byte-stable through a re-serialize, and
- * changing it here would change every new file.
+ * Adds `SourceFileName` to the fallback template, whose last element is
+ * `PriceList`, so appending puts it in its declared position. Only reached for
+ * a catalog too old to carry a blank order of its own.
  */
 function withSourceFileName(orderXml: string, catalog: string): string {
   if (!catalog || orderXml.includes('<SourceFileName>')) return orderXml
@@ -161,7 +164,21 @@ export async function createNewOrder(
   // carries it, and the header reads it to show the current catalog — without
   // it a new order claims to have none.
   const catalog = pdb ? readVersionName(pdb.configXml) : ''
-  const orderXml = withSourceFileName(createBlankOrderXml(), catalog)
+
+  // The catalog is read first, because the blank order comes out of it.
+  const source = pdb?.rawBuffer ? await readContainer(new Uint8Array(pdb.rawBuffer)) : null
+
+  // Every catalog since PDB276 ships the blank order GPC itself opens. Use it.
+  // The hand-written template is only for the older ones, and is a guess at
+  // what GPC writes rather than a copy of it.
+  const blank = source ? catalogBlankOrder(source) : null
+  const orderXml = blank
+    ? startOrderFromCatalogBlank(blank, {
+        catalog,
+        root: { Distributor: TRILION_DISTRIBUTOR_ID },
+        apply: (draft) => { draft.account.accountNumber = TRILION_DISTRIBUTOR_ID },
+      })
+    : withSourceFileName(createBlankOrderXml(), catalog)
   const order = parseOrder(orderXml)
 
   const licenseCatalog = pdb
@@ -178,9 +195,8 @@ export async function createNewOrder(
   const encoder = new TextEncoder()
   const parts = new Map<string, Uint8Array>()
 
-  if (pdb?.rawBuffer) {
+  if (source) {
     // Carry the catalog over from the product database as-is.
-    const source = await readContainer(new Uint8Array(pdb.rawBuffer))
     for (const entry of source.entries) parts.set(entry.name, entry.data)
   }
   if (pdb?.configXml && !parts.has('config.xml')) parts.set('config.xml', encoder.encode(pdb.configXml))
