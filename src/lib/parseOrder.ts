@@ -1,3 +1,4 @@
+import { MINIMUM_CONTRACT_MONTHS, lapsedMonths, monthsBetween } from './gpc/contractTerm.ts'
 import type { AccountDetails, ArticleRow, ConfigItem, OrderAdministration, OrderSummary, SectionDetail, SmaDetails, SmaSoftwareArticle, SmaDependentList, TechnicalContact } from '../types/order.js'
 import { parseItemNo } from './pricing.js'
 
@@ -165,12 +166,22 @@ function parseSmaDetails(el: Element): SmaDetails {
   if (dlEl) {
     for (const d of Array.from(dlEl.children)) {
       const ciEl = directChild(d, 'ConfigurationItem')
+      const startNewContract = childText(d, 'StartNewContract')
+      const endNewContract = childText(d, 'EndNewContract')
+      const endOldContract = childText(d, 'EndOldContract')
       const dl: SmaDependentList = {
         name: ciEl ? childText(ciEl, 'Name') : '',
         dongleId: childText(d, 'DongleId'),
-        startNewContract: childText(d, 'StartNewContract'),
-        endNewContract: childText(d, 'EndNewContract'),
-        endOldContract: childText(d, 'EndOldContract'),
+        startNewContract,
+        endNewContract,
+        endOldContract,
+        // Derived with the same arithmetic the writer uses, so the term shown
+        // and the term priced cannot disagree.
+        months:
+          startNewContract && endNewContract
+            ? monthsBetween(startNewContract, endNewContract)
+            : MINIMUM_CONTRACT_MONTHS,
+        gapMonths: lapsedMonths(endOldContract, startNewContract),
         totalMsrp: childFloat(d, 'TotalMsrp'),
         totalDp: childFloat(d, 'TotalDp'),
       }

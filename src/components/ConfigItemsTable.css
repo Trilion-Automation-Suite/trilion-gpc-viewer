@@ -566,3 +566,7 @@
   color: var(--danger, #b3261e);
   border-color: currentColor;
 }
+
+.sma-input-sm {
+  min-width: 80px;
+}

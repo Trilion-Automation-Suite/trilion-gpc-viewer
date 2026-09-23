@@ -1,6 +1,8 @@
 import { Fragment, useState } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentList } from '../types/order.ts'
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
+import { MINIMUM_CONTRACT_MONTHS } from '../lib/gpc/contractTerm.ts'
+import type { SmaContractEdit } from '../lib/gpc/sma.ts'
 import './ConfigItemsTable.css'
 
 interface ConfigItemsTableProps {
@@ -12,7 +14,7 @@ interface ConfigItemsTableProps {
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
   /** Agreements `SMA_EXT` offers, for the per-dongle picker. */
   smaCatalog: string[]
-  onSmaContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onSmaContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddSmaExtension: (dongleIndex: number, articleName: string) => void
   onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
 }
@@ -213,7 +215,7 @@ function DongleRowEditor({
   index: number
   isEditing: boolean
   smaCatalog: string[]
-  onContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddExtension: (dongleIndex: number, articleName: string) => void
 }) {
   const [adding, setAdding] = useState(false)
@@ -246,12 +248,41 @@ function DongleRowEditor({
                 onChange={e => e.target.value && onContractChange(index, { endOldContract: e.target.value })}
               />
             </label>
+            <label className="sma-field">
+              <span className="sma-info-label">New agreement starts</span>
+              <input
+                className="sma-input"
+                type="date"
+                value={fmtDate(dongle.startNewContract)}
+                onChange={e => e.target.value && onContractChange(index, { startNewContract: e.target.value })}
+              />
+            </label>
+            <label className="sma-field">
+              <span className="sma-info-label">Term (months)</span>
+              <input
+                className="sma-input sma-input-sm"
+                type="number"
+                min={MINIMUM_CONTRACT_MONTHS}
+                step={1}
+                value={dongle.months}
+                onChange={e => {
+                  const months = parseInt(e.target.value, 10)
+                  if (months >= MINIMUM_CONTRACT_MONTHS) onContractChange(index, { months })
+                }}
+              />
+            </label>
             <div className="sma-field">
-              <span className="sma-info-label">New term</span>
-              <span className="sma-info-value">
-                {fmtDate(dongle.startNewContract)} &rarr; {fmtDate(dongle.endNewContract)}
-              </span>
+              <span className="sma-info-label">Ends</span>
+              <span className="sma-info-value">{fmtDate(dongle.endNewContract)}</span>
             </div>
+            {dongle.gapMonths > 0 && (
+              <div className="sma-field">
+                <span className="sma-info-label">Lapsed cover</span>
+                <span className="sma-info-value">
+                  {dongle.gapMonths} month{dongle.gapMonths === 1 ? '' : 's'}, not charged
+                </span>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -262,9 +293,15 @@ function DongleRowEditor({
             <div className="sma-field">
               <span className="sma-info-label">Term</span>
               <span className="sma-info-value">
-                {fmtDate(dongle.startNewContract)} &rarr; {fmtDate(dongle.endNewContract)}
+                {fmtDate(dongle.startNewContract)} &rarr; {fmtDate(dongle.endNewContract)} ({dongle.months} months)
               </span>
             </div>
+            {dongle.gapMonths > 0 && (
+              <div className="sma-field">
+                <span className="sma-info-label">Lapsed cover</span>
+                <span className="sma-info-value">{dongle.gapMonths} months, not charged</span>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -321,7 +358,7 @@ function SmaDetailPanel({
   colSpan: number
   isEditing: boolean
   smaCatalog: string[]
-  onContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddExtension: (dongleIndex: number, articleName: string) => void
   onRemoveExtension: (dongleIndex: number, articleName: string) => void
 }) {
@@ -433,7 +470,7 @@ function ItemRow({
   onDelete: (no: string) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
   smaCatalog: string[]
-  onSmaContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
+  onSmaContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddSmaExtension: (dongleIndex: number, articleName: string) => void
   onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
 }) {

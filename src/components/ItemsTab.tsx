@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import type { OrderSummary } from '../types/order.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
 import type { LicenseOption } from '../lib/gpc/licenses.ts'
+import { MINIMUM_CONTRACT_MONTHS, lapsedMonths, termEnd } from '../lib/gpc/contractTerm.ts'
 import { ConfigItemsTable } from './ConfigItemsTable.tsx'
 import './ItemsTab.css'
 
@@ -32,8 +33,15 @@ type ModalType = 'product' | 'license' | null
  */
 export interface SmaFields {
   dongleId: string
-  /** End of the agreement being replaced; the new term runs from the next day. */
+  /** End of the agreement being replaced. */
   endOldContract: string
+  /**
+   * When cover resumes. Later than the day after `endOldContract` leaves a
+   * deliberate gap, and the lapsed months are not charged for.
+   */
+  startNewContract: string
+  /** Twelve or more. The price scales with the term. */
+  months: number
   licenseUserEmail: string
   licenseUserName: string
 }
@@ -64,12 +72,6 @@ function nextDay(day: string): string {
   return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
 }
 
-function sameDayNextYear(day: string): string {
-  const [y, m, d] = day.split('-').map(Number)
-  if (!y) return ''
-  return new Date(Date.UTC(y + 1, m - 1, d)).toISOString().slice(0, 10)
-}
-
 function SearchProductModal({
   catalog,
   onAdd,
@@ -84,6 +86,8 @@ function SearchProductModal({
   const [selected, setSelected] = useState<ArticleCatalogEntry | null>(null)
   const [dongleId, setDongleId] = useState('')
   const [endOldContract, setEndOldContract] = useState(defaultContractEnd)
+  const [startNewContract, setStartNewContract] = useState('')
+  const [months, setMonths] = useState(MINIMUM_CONTRACT_MONTHS)
   const [licenseUserEmail, setLicenseUserEmail] = useState('licensing@trilion.com')
   const [licenseUserName, setLicenseUserName] = useState('Trilion Licensing')
 
@@ -95,6 +99,8 @@ function SearchProductModal({
 
   const candidate = selected ?? (filtered.length === 1 ? filtered[0] : null)
   const needsContract = candidate?.isSoftwareSupport ?? false
+  const effectiveStart = startNewContract || nextDay(endOldContract)
+  const gapMonths = lapsedMonths(endOldContract, effectiveStart)
 
   function handleSelect(entry: ArticleCatalogEntry) {
     setSelected(entry)
@@ -114,7 +120,16 @@ function SearchProductModal({
       category: candidate.category,
       currency: candidate.currency,
       ...(needsContract
-        ? { sma: { dongleId: dongleId.trim(), endOldContract, licenseUserEmail, licenseUserName } }
+        ? {
+            sma: {
+              dongleId: dongleId.trim(),
+              endOldContract,
+              startNewContract: startNewContract || nextDay(endOldContract),
+              months,
+              licenseUserEmail,
+              licenseUserName,
+            },
+          }
         : {}),
     })
   }
@@ -174,10 +189,38 @@ function SearchProductModal({
               </label>
               <label className="modal-label modal-label-sm">
                 Current agreement ends
-                <input className="modal-input" type="date" value={endOldContract} onChange={e => setEndOldContract(e.target.value)} required />
+                <input
+                  className="modal-input"
+                  type="date"
+                  value={endOldContract}
+                  onChange={e => { setEndOldContract(e.target.value); setStartNewContract('') }}
+                  required
+                />
+              </label>
+              <label className="modal-label modal-label-sm">
+                New agreement starts
+                <input
+                  className="modal-input"
+                  type="date"
+                  value={effectiveStart}
+                  min={nextDay(endOldContract)}
+                  onChange={e => setStartNewContract(e.target.value)}
+                />
+              </label>
+              <label className="modal-label modal-label-sm">
+                Term (months)
+                <input
+                  className="modal-input"
+                  type="number"
+                  min={MINIMUM_CONTRACT_MONTHS}
+                  step={1}
+                  value={months}
+                  onChange={e => setMonths(Math.max(MINIMUM_CONTRACT_MONTHS, parseInt(e.target.value, 10) || MINIMUM_CONTRACT_MONTHS))}
+                />
               </label>
               <p className="modal-hint">
-                New term {nextDay(endOldContract)} to {sameDayNextYear(endOldContract)}.
+                {effectiveStart} to {termEnd(effectiveStart, months)} &mdash; {months} months.
+                {gapMonths > 0 && ` Cover lapses for ${gapMonths} month${gapMonths === 1 ? '' : 's'} after the current agreement, which is not charged for.`}
               </p>
               <label className="modal-label modal-label-sm">
                 Licence user e-mail

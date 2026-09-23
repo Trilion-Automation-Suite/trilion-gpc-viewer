@@ -330,6 +330,8 @@ export function App() {
         addSmaExtension(doc, pdb, fields.name, {
           dongleId: fields.sma.dongleId,
           endOldContract: fields.sma.endOldContract,
+          startNewContract: fields.sma.startNewContract,
+          months: fields.sma.months,
           licenseUserEmail: fields.sma.licenseUserEmail,
           licenseUserName: fields.sma.licenseUserName,
         })

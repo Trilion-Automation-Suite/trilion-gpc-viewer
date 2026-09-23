@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { parseOrderXml, serializeOrderXml } from '../orderXml.ts'
 import { catalogContainer } from '../catalogContainer.ts'
 import {
+  MINIMUM_CONTRACT_MONTHS,
+  monthsBetween,
   addSmaExtension,
   addSmaExtensionToDongle,
   contractDates,
@@ -287,5 +289,91 @@ describe('software maintenance agreements', () => {
     expect(() =>
       addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: '', endOldContract: '2026-04-30' })
     ).toThrow(/dongle id/)
+  })
+})
+
+describe('term length and gaps', () => {
+  it('ends a twelve-month term on the month boundary, as the reference does', () => {
+    expect(contractDates({ endOldContract: '2026-04-30' })).toEqual({
+      endOldContract: '2026-04-30T00:00:00',
+      startNewContract: '2026-05-01T00:00:00',
+      endNewContract: '2027-04-30T00:00:00',
+    })
+  })
+
+  it('runs a longer term for as many months as asked', () => {
+    const dates = contractDates({ endOldContract: '2026-04-30', months: 18 })
+    expect(dates.startNewContract).toBe('2026-05-01T00:00:00')
+    expect(dates.endNewContract).toBe('2027-10-31T00:00:00')
+    // GPC prices from the month count, so the two must agree.
+    expect(monthsBetween(dates.startNewContract, dates.endNewContract)).toBe(18)
+  })
+
+  it('never goes below the twelve-month minimum', () => {
+    const dates = contractDates({ endOldContract: '2026-04-30', months: 3 })
+    expect(monthsBetween(dates.startNewContract, dates.endNewContract)).toBe(MINIMUM_CONTRACT_MONTHS)
+  })
+
+  it('leaves a gap when the new term starts later', () => {
+    // Old cover ran out in July; the new agreement starts in October, and the
+    // three lapsed months are not charged for.
+    const dates = contractDates({
+      endOldContract: '2026-07-31',
+      startNewContract: '2026-10-01',
+      months: 12,
+    })
+    expect(dates.endOldContract).toBe('2026-07-31T00:00:00')
+    expect(dates.startNewContract).toBe('2026-10-01T00:00:00')
+    expect(dates.endNewContract).toBe('2027-09-30T00:00:00')
+    expect(monthsBetween(dates.startNewContract, dates.endNewContract)).toBe(12)
+  })
+
+  it('charges nothing for the lapsed months', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-07-31', startNewContract: '2026-10-01',
+    })
+    const xml = xmlOf(order)
+    // MsrpForMissingMonth is what GPC would bill a lapse with; it stays null.
+    expect(xml).toContain('<MsrpForMissingMonth xsi:nil="true" />')
+    expect(xml).not.toMatch(/<MsrpForMissingMonth>[^<]/)
+    const [dongle] = smaDongles(order)
+    expect(dongle.gapMonths).toBe(2)
+  })
+
+  it('reports the term a dongle row is on', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-04-30', months: 24,
+    })
+    const [dongle] = smaDongles(order)
+    expect(dongle.months).toBe(24)
+    expect(dongle.gapMonths).toBe(0)
+    expect(dongle.endNewContract).toBe('2028-04-30T00:00:00')
+  })
+
+  it('keeps the gap when only the term length changes', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-07-31', startNewContract: '2026-10-01',
+    })
+    setSmaContract(order, pdb, 0, { months: 18 })
+    const [dongle] = smaDongles(order)
+    expect(dongle.startNewContract).toBe('2026-10-01T00:00:00')
+    expect(dongle.months).toBe(18)
+    expect(dongle.endNewContract).toBe('2028-03-31T00:00:00')
+  })
+
+  it('prices a longer term pro rata', () => {
+    const twelve = build()
+    addSmaExtension(twelve.order, twelve.pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-04-30',
+    })
+    const twentyFour = build()
+    addSmaExtension(twentyFour.order, twentyFour.pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-04-30', months: 24,
+    })
+    const msrp = (o: typeof twelve) => Number(smaDongles(o.order)[0].totalMsrp)
+    expect(msrp(twentyFour)).toBeCloseTo(msrp(twelve) * 2, 5)
   })
 })

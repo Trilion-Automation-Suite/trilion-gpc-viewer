@@ -23,6 +23,9 @@ import { findSupportItem, plainSupportFilter, refreshSupportArticles } from './a
 import { addDependentListSupport } from './dependentList.ts'
 import type { DependentListSelection } from './dependentList.ts'
 import { findOption, sectionDefault } from './catalogIndex.ts'
+import { MINIMUM_CONTRACT_MONTHS, lapsedMonths, monthsBetween, termEnd } from './contractTerm.ts'
+
+export { MINIMUM_CONTRACT_MONTHS, monthsBetween, lapsedMonths, termEnd } from './contractTerm.ts'
 
 /** The section of `SMA_EXT` that chooses how the licence is held. */
 const LICENSE_MODEL_SECTION = 'License model'
@@ -31,12 +34,19 @@ export interface SmaContract {
   /** Dongle or sensor serial the agreement covers. Operator input. */
   dongleId: string
   /**
-   * End of the agreement being replaced, `YYYY-MM-DD`. The new one runs from
-   * the next day for a year, which is how every reference line is dated.
+   * End of the agreement being replaced, `YYYY-MM-DD`. The new one starts the
+   * next day unless a start is given.
    */
   endOldContract: string
-  /** Overrides the derived dates when a line does not follow the usual term. */
+  /**
+   * When the new agreement starts, `YYYY-MM-DD`. Given explicitly it opens a
+   * gap after the old one — cover lapses, and nothing is charged for the
+   * months in between, because `MsrpForMissingMonth` stays null on every row.
+   */
   startNewContract?: string
+  /** Term length. Twelve or more; the price scales with it. */
+  months?: number
+  /** Overrides the derived end when a term does not land on a month boundary. */
   endNewContract?: string
   /** Stored as the support screen's `Reply1` / `Reply2`; GPC prompts for both. */
   licenseUserEmail?: string
@@ -55,22 +65,27 @@ function shiftDays(day: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
 }
 
-function addYear(day: string): string {
-  const [y, m, d] = day.slice(0, 10).split('-').map(Number)
-  return new Date(Date.UTC(y + 1, m - 1, d)).toISOString().slice(0, 10)
-}
-
-/** The three dates a dongle row carries, derived from the old contract's end. */
-export function contractDates(contract: Pick<SmaContract, 'endOldContract' | 'startNewContract' | 'endNewContract'>): {
+/**
+ * The three dates a dongle row carries.
+ *
+ * The new term starts the day after the old one ends unless a later start is
+ * given, which is how a deliberate gap is expressed: cover lapses for those
+ * months and the order charges nothing for them.
+ */
+export function contractDates(
+  contract: Pick<SmaContract, 'endOldContract' | 'startNewContract' | 'endNewContract' | 'months'>
+): {
   startNewContract: string
   endNewContract: string
   endOldContract: string
 } {
   const endOld = contract.endOldContract.slice(0, 10)
+  const start = (contract.startNewContract ?? shiftDays(endOld, 1)).slice(0, 10)
+  const months = Math.max(contract.months ?? MINIMUM_CONTRACT_MONTHS, MINIMUM_CONTRACT_MONTHS)
   return {
     endOldContract: dateTime(endOld),
-    startNewContract: dateTime(contract.startNewContract ?? shiftDays(endOld, 1)),
-    endNewContract: dateTime(contract.endNewContract ?? addYear(endOld)),
+    startNewContract: dateTime(start),
+    endNewContract: dateTime(contract.endNewContract ?? termEnd(start, months)),
   }
 }
 
@@ -110,6 +125,10 @@ export interface SmaDongleView {
   startNewContract: string
   endNewContract: string
   endOldContract: string
+  /** Whole months the new term covers, as GPC counts them for pricing. */
+  months: number
+  /** Months of lapsed cover between the old agreement and the new one. */
+  gapMonths: number
   totalMsrp: string
   totalDp: string
   /** The options switched on, licence model included. */
@@ -128,12 +147,20 @@ export function smaDongles(order: OrderDocument): SmaDongleView[] {
         }
       }
     }
+    const startNewContract = text(row, 'StartNewContract') ?? ''
+    const endNewContract = text(row, 'EndNewContract') ?? ''
+    const endOldContract = text(row, 'EndOldContract') ?? ''
     return {
       index,
       dongleId: text(row, 'DongleId') ?? '',
-      startNewContract: text(row, 'StartNewContract') ?? '',
-      endNewContract: text(row, 'EndNewContract') ?? '',
-      endOldContract: text(row, 'EndOldContract') ?? '',
+      startNewContract,
+      endNewContract,
+      endOldContract,
+      months:
+        startNewContract && endNewContract
+          ? monthsBetween(startNewContract, endNewContract)
+          : MINIMUM_CONTRACT_MONTHS,
+      gapMonths: lapsedMonths(endOldContract, startNewContract),
       totalMsrp: text(row, 'TotalMsrp') ?? '0',
       totalDp: text(row, 'TotalDp') ?? '0',
       selected,
@@ -289,6 +316,7 @@ export interface SmaContractEdit {
   dongleId?: string
   endOldContract?: string
   startNewContract?: string
+  months?: number
   endNewContract?: string
   licenseUserEmail?: string
   licenseUserName?: string
@@ -311,10 +339,25 @@ export function setSmaContract(
   if (!row) throw new Error(`sma: the order has no dongle row ${dongleIndex}`)
 
   if (edit.dongleId !== undefined) setText(row, 'DongleId', edit.dongleId)
-  if (edit.endOldContract !== undefined || edit.startNewContract !== undefined || edit.endNewContract !== undefined) {
+  const touchesTerm =
+    edit.endOldContract !== undefined ||
+    edit.startNewContract !== undefined ||
+    edit.endNewContract !== undefined ||
+    edit.months !== undefined
+  if (touchesTerm) {
+    const current = smaDongles(order)[dongleIndex]
+    // Anything not being changed is kept as it stands, so editing the term
+    // length does not silently reset a start date that opens a gap.
+    const endOld = edit.endOldContract ?? current.endOldContract.slice(0, 10)
+    const start =
+      edit.startNewContract ??
+      (edit.endOldContract !== undefined
+        ? undefined
+        : current.startNewContract.slice(0, 10) || undefined)
     const dates = contractDates({
-      endOldContract: edit.endOldContract ?? (text(row, 'EndOldContract') ?? '').slice(0, 10),
-      startNewContract: edit.startNewContract,
+      endOldContract: endOld,
+      startNewContract: start,
+      months: edit.months ?? (edit.endNewContract === undefined ? current.months : undefined),
       endNewContract: edit.endNewContract,
     })
     setText(row, 'StartNewContract', dates.startNewContract)

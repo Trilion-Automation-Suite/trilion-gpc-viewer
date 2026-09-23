@@ -153,6 +153,10 @@ export interface SmaDependentList {
   startNewContract: string
   endNewContract: string
   endOldContract: string
+  /** Whole months the new term covers — what GPC prices the agreement by. */
+  months: number
+  /** Months of lapsed cover before the new term, which are not charged for. */
+  gapMonths: number
   totalMsrp: number | null
   totalDp: number | null
 }
