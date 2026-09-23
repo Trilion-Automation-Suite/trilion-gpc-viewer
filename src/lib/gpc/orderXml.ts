@@ -28,6 +28,7 @@
  * than echoed.
  */
 import { CANONICAL_ORDER } from './orderSchema.ts'
+import { MEMBER_ORDER } from './memberOrder.ts'
 
 const DECLARATION = '<?xml version="1.0" encoding="utf-8"?>'
 const ROOT = 'OrderData'
@@ -310,7 +311,15 @@ export function text(el: ElementValue, name: string): string | null {
  * ones that are present.
  */
 export function setMember(el: ElementValue, typeName: string, name: string, value: OrderValue): void {
-  const order = CANONICAL_ORDER[typeName]
+  // CANONICAL_ORDER is derived from the reference files and so cannot contain a
+  // member that is null in every one of them — its own header calls it a lower
+  // bound. MEMBER_ORDER comes from the class declarations and has no such gap,
+  // so it answers for anything the artifacts never showed. The artifact-derived
+  // table still wins where both know a type, because that is what M2 and M4
+  // prove byte-exact.
+  const order = CANONICAL_ORDER[typeName]?.includes(name)
+    ? CANONICAL_ORDER[typeName]
+    : MEMBER_ORDER[typeName] ?? CANONICAL_ORDER[typeName]
   if (!order) throw new Error(`orderXml: no canonical member order known for ${typeName}`)
   const position = order.indexOf(name)
   if (position < 0) throw new Error(`orderXml: ${typeName} has no member ${name}`)

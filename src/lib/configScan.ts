@@ -78,6 +78,8 @@ export interface ScannedArticle {
   msrp: number | null
   dp: number | null
   currency: string
+  /** Carries the `<software-support>` tag, so it belongs in a support screen. */
+  isSoftwareSupport: boolean
 }
 
 /**
@@ -112,6 +114,11 @@ export function scanArticles(configXml: string, priceListName: string): ScannedA
       sapNr: readText(article, 'SapNr'),
       unit: readText(article, 'Unit'),
       category,
+      // The tag that sends an article to a support screen rather than a free
+      // list. The picker needs it to know when to ask for a dongle. This
+      // scanner reads raw text and does not resolve entities, and the catalog
+      // writes the tag escaped.
+      isSoftwareSupport: readText(article, 'FilterTags').includes('&lt;software-support&gt;'),
       msrp: toFloat(readText(priceList, 'Msrp')),
       dp: toFloat(readText(priceList, 'Dp')),
       currency: readText(priceList, 'Currency'),

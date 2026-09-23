@@ -9,7 +9,7 @@ interface ItemsTabProps {
   order: OrderSummary
   isEditing: boolean
   onDelete: (no: string) => void
-  onAddProduct: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => void
+  onAddProduct: (fields: AddProductFields) => void
   onAddLicense: (fields: { name: string; sapNr: string; userZeissId: string; userName: string }) => void
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
   /** Built on demand — the catalog costs a scan of the whole product database. */
@@ -19,23 +19,76 @@ interface ItemsTabProps {
 
 type ModalType = 'product' | 'license' | null
 
+/**
+ * A software maintenance agreement covers a dongle for a term, and neither is
+ * in the catalog. Without them GPC shows the line as an empty category, because
+ * the licence-model row the agreement hangs from is what carries them.
+ */
+export interface SmaFields {
+  dongleId: string
+  /** End of the agreement being replaced; the new term runs from the next day. */
+  endOldContract: string
+  licenseUserEmail: string
+  licenseUserName: string
+}
+
+export interface AddProductFields {
+  name: string
+  amount: number
+  unit: string
+  unitMsrp: number | null
+  unitDp: number | null
+  sapNr: string
+  category: string
+  currency: string
+  /** Present only for a software maintenance agreement. */
+  sma?: SmaFields
+}
+
+/** Today, as a starting point for the date the current agreement runs out. */
+function defaultContractEnd(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
+/** Shown so the operator can see the term before committing to it. */
+function nextDay(day: string): string {
+  const [y, m, d] = day.split('-').map(Number)
+  if (!y) return ''
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
+function sameDayNextYear(day: string): string {
+  const [y, m, d] = day.split('-').map(Number)
+  if (!y) return ''
+  return new Date(Date.UTC(y + 1, m - 1, d)).toISOString().slice(0, 10)
+}
+
 function SearchProductModal({
   catalog,
   onAdd,
   onCancel,
 }: {
   catalog: ArticleCatalogEntry[]
-  onAdd: (fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => void
+  onAdd: (fields: AddProductFields) => void
   onCancel: () => void
 }) {
   const [query, setQuery] = useState('')
   const [amount, setAmount] = useState(1)
   const [selected, setSelected] = useState<ArticleCatalogEntry | null>(null)
+  const [dongleId, setDongleId] = useState('')
+  const [endOldContract, setEndOldContract] = useState(defaultContractEnd)
+  const [licenseUserEmail, setLicenseUserEmail] = useState('licensing@trilion.com')
+  const [licenseUserName, setLicenseUserName] = useState('Trilion Licensing')
+
 
   const filtered = query.trim().length < 2
     ? []
     : catalog.filter(e => e.longName.toLowerCase().includes(query.toLowerCase()))
       .slice(0, 50)
+
+  const candidate = selected ?? (filtered.length === 1 ? filtered[0] : null)
+  const needsContract = candidate?.isSoftwareSupport ?? false
 
   function handleSelect(entry: ArticleCatalogEntry) {
     setSelected(entry)
@@ -44,9 +97,20 @@ function SearchProductModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const item = selected ?? (filtered.length === 1 ? filtered[0] : null)
-    if (!item) return
-    onAdd({ name: item.longName, amount, unit: item.unit || 'pcs', unitMsrp: item.unitMsrp, unitDp: item.unitDp, sapNr: item.sapNr, category: item.category, currency: item.currency })
+    if (!candidate) return
+    onAdd({
+      name: candidate.longName,
+      amount,
+      unit: candidate.unit || 'pcs',
+      unitMsrp: candidate.unitMsrp,
+      unitDp: candidate.unitDp,
+      sapNr: candidate.sapNr,
+      category: candidate.category,
+      currency: candidate.currency,
+      ...(needsContract
+        ? { sma: { dongleId: dongleId.trim(), endOldContract, licenseUserEmail, licenseUserName } }
+        : {}),
+    })
   }
 
   return (
@@ -85,9 +149,49 @@ function SearchProductModal({
             Qty
             <input className="modal-input" type="number" min={1} step={1} value={amount} onChange={e => setAmount(Math.max(1, parseInt(e.target.value, 10) || 1))} />
           </label>
+          {needsContract && (
+            <fieldset className="modal-fieldset">
+              <legend className="modal-legend">Software Maintenance Agreement</legend>
+              <p className="modal-hint">
+                The agreement covers one dongle for one year. GPC groups the rows under a
+                licence-model row, so the dongle and the term are needed to create the line.
+              </p>
+              <label className="modal-label modal-label-sm">
+                Dongle / sensor serial
+                <input
+                  className="modal-input"
+                  value={dongleId}
+                  onChange={e => setDongleId(e.target.value)}
+                  placeholder="3-7619774"
+                  required
+                />
+              </label>
+              <label className="modal-label modal-label-sm">
+                Current agreement ends
+                <input className="modal-input" type="date" value={endOldContract} onChange={e => setEndOldContract(e.target.value)} required />
+              </label>
+              <p className="modal-hint">
+                New term {nextDay(endOldContract)} to {sameDayNextYear(endOldContract)}.
+              </p>
+              <label className="modal-label modal-label-sm">
+                Licence user e-mail
+                <input className="modal-input" type="email" value={licenseUserEmail} onChange={e => setLicenseUserEmail(e.target.value)} />
+              </label>
+              <label className="modal-label modal-label-sm">
+                Licence user name
+                <input className="modal-input" value={licenseUserName} onChange={e => setLicenseUserName(e.target.value)} />
+              </label>
+            </fieldset>
+          )}
           <div className="modal-actions">
             <button type="button" className="modal-btn modal-btn-cancel" onClick={onCancel}>Cancel</button>
-            <button type="submit" className="modal-btn modal-btn-add" disabled={!selected && filtered.length !== 1}>Add</button>
+            <button
+              type="submit"
+              className="modal-btn modal-btn-add"
+              disabled={!candidate || (needsContract && dongleId.trim() === '')}
+            >
+              Add
+            </button>
           </div>
         </form>
       </div>
@@ -202,7 +306,7 @@ export function ItemsTab({
     })
   }, [])
 
-  function handleAddProduct(fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) {
+  function handleAddProduct(fields: AddProductFields) {
     onAddProduct(fields)
     setActiveModal(null)
   }

@@ -810,7 +810,13 @@ export function ensureSupportScreen(
   if (!list || list.kind !== 'element') throw new Error('addItem: order has no <SupportArticlesData>')
 
   const existing = list.members.find((m) => m.value.kind === 'element')
-  if (existing && existing.value.kind === 'element') return existing.value
+  if (existing && existing.value.kind === 'element') {
+    // The licence user is asked for once per screen, and may be supplied on a
+    // later article than the one that created it.
+    if (options.replyEmail) setMember(existing.value, 'SupportScreenData', 'Reply1', txt(options.replyEmail))
+    if (options.replyName) setMember(existing.value, 'SupportScreenData', 'Reply2', txt(options.replyName))
+    return existing.value
+  }
 
   const screen = el([
     ['ConfigurationItem', clone(findSupportItem(config))],

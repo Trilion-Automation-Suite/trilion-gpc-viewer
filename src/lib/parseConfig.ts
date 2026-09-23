@@ -24,6 +24,11 @@ export interface ArticleCatalogEntry {
   unit: string
   category: string
   currency: string  // ISO currency the prices are denominated in
+  /**
+   * A software maintenance agreement, which cannot be added on its own: it
+   * needs a dongle and a contract term. See `gpc/sma.ts`.
+   */
+  isSoftwareSupport: boolean
 }
 
 /**
@@ -43,6 +48,7 @@ export function buildArticleCatalog(
     unit: a.unit,
     category: a.category,
     currency: a.currency,
+    isSoftwareSupport: a.isSoftwareSupport,
   }))
   entries.sort((a, b) => a.longName.localeCompare(b.longName))
   return entries

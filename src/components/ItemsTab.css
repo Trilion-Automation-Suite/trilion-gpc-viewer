@@ -206,3 +206,34 @@
   margin-top: 4px;
 }
 .modal-selected-name { font-size: 0.85rem; font-weight: 500; flex: 1; }
+
+/*
+ * The contract block on the add-product modal. It only appears for a software
+ * maintenance agreement, which cannot be created without a dongle and a term.
+ */
+.modal-fieldset {
+  margin: 12px 0 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border, #d0d0d0);
+  border-radius: 6px;
+}
+
+.modal-legend {
+  padding: 0 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #666);
+}
+
+.modal-hint {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--text-muted, #666);
+}
+
+.modal-fieldset .modal-label-sm + .modal-hint {
+  margin-top: 6px;
+}

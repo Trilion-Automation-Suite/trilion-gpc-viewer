@@ -90,3 +90,39 @@ describe('configScan matches the DOM implementation', () => {
     expect(scanCurrencyRates('<AdministrationData />')).toEqual({})
   })
 })
+
+describe('software-support articles', () => {
+  it('is flagged from the escaped filter tag the catalog writes', () => {
+    const config = `<AdministrationData>
+  <ArticlesData>
+    <Articles>
+      <Article>
+        <LongName>EXT SMA for Sensor Driver ARAMIS</LongName>
+        <SapNr>000250-1</SapNr>
+        <Unit>pcs</Unit>
+        <MPG>SMA</MPG>
+        <FilterTags>&lt;software-support&gt;</FilterTags>
+        <ArticlePriceLists>
+          <ArticlePriceList><Name>Partner</Name><Currency>EUR</Currency><Msrp>1563</Msrp><Dp>1563</Dp></ArticlePriceList>
+        </ArticlePriceLists>
+      </Article>
+      <Article>
+        <LongName>Calibration Panel CPA30/210</LongName>
+        <SapNr>000250-2</SapNr>
+        <Unit>pcs</Unit>
+        <MPG>Spare</MPG>
+        <FilterTags>&lt;Articles&gt;spare</FilterTags>
+        <ArticlePriceLists>
+          <ArticlePriceList><Name>Partner</Name><Currency>EUR</Currency><Msrp>1070</Msrp><Dp>749</Dp></ArticlePriceList>
+        </ArticlePriceLists>
+      </Article>
+    </Articles>
+  </ArticlesData>
+</AdministrationData>`
+    const found = scanArticles(config, 'Partner')
+    expect(found.map((a) => [a.longName, a.isSoftwareSupport])).toEqual([
+      ['EXT SMA for Sensor Driver ARAMIS', true],
+      ['Calibration Panel CPA30/210', false],
+    ])
+  })
+})

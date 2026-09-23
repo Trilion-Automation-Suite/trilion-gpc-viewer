@@ -6,6 +6,7 @@ import type { ArticleCatalogEntry } from './lib/parseConfig.ts'
 import { buildArticleCatalog } from './lib/parseConfig.ts'
 import { parseOrder } from './lib/parseOrder.ts'
 import { parseOrderXml, serializeOrderXml } from './lib/gpc/orderXml.ts'
+import { addSmaExtension } from './lib/gpc/sma.ts'
 import { addCatalogArticle } from './lib/gpc/addItem.ts'
 import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
@@ -19,6 +20,7 @@ import { FilePicker } from './components/FilePicker.tsx'
 import { SummaryBar } from './components/SummaryBar.tsx'
 import { ErrorBanner } from './components/ErrorBanner.tsx'
 import { OrderStrip } from './components/OrderStrip.tsx'
+import type { AddProductFields } from './components/ItemsTab.tsx'
 import { ItemsTab } from './components/ItemsTab.tsx'
 import { AccountTab } from './components/AccountTab.tsx'
 import { ContactTab } from './components/ContactTab.tsx'
@@ -221,7 +223,7 @@ export function App() {
    * The insertion happens here, against order.xml, rather than at save time, so
    * what the table shows is what the file contains.
    */
-  const handleAddProduct = useCallback((fields: { name: string; amount: number; unit: string; unitMsrp: number | null; unitDp: number | null; sapNr: string; category: string; currency: string }) => {
+  const handleAddProduct = useCallback((fields: AddProductFields) => {
     if (state.status !== 'loaded' || !state.result.configXml) {
       setAddItemError('Cannot add a product without the product database this order was built on.')
       return
@@ -229,9 +231,19 @@ export function App() {
     setAddItemError(null)
     try {
       const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
-      addCatalogArticle(doc, catalogContainer(state.result.configXml), fields.name, {
-        amount: fields.amount,
-      })
+      const pdb = catalogContainer(state.result.configXml)
+      if (fields.sma) {
+        // A maintenance agreement is a group, not a row: the licence-model row
+        // carries the dongle and the term, and the agreements hang off it.
+        addSmaExtension(doc, pdb, fields.name, {
+          dongleId: fields.sma.dongleId,
+          endOldContract: fields.sma.endOldContract,
+          licenseUserEmail: fields.sma.licenseUserEmail,
+          licenseUserName: fields.sma.licenseUserName,
+        })
+      } else {
+        addCatalogArticle(doc, pdb, fields.name, { amount: fields.amount })
+      }
       const orderXml = new TextDecoder().decode(serializeOrderXml(doc))
       const parsed = parseOrder(orderXml)
       // Same file, edited: keep loadId so the sync effect leaves our new order
