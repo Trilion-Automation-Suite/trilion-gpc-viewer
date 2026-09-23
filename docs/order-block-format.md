@@ -72,7 +72,10 @@ generator never breaks an older viewer.
   },
 
   "administration": {                  // OrderAdministration
-    "invoiceAddressType": "Customer",  // GPC Partner | Customer | …
+    // Exactly one of: Customer | GOM Partner | Order Process Center | Other
+    // Address. The viewer copies the string through verbatim, so anything else
+    // reaches GPC as-is and is not understood; it warns on an unknown value.
+    "invoiceAddressType": "Customer",
     "invoiceAccountNumber": "…", "invoiceCompanyName": "…", "invoiceCompanyNameTwo": "…",
     "invoiceDepartment": "…", "invoiceDepartmentTwo": "…",
     "invoiceStreet": "…", "invoiceStreetTwo": "…", "invoiceStreetThree": "…",
@@ -80,7 +83,7 @@ generator never breaks an older viewer.
     "invoiceZip": "…", "invoiceCountry": "…",
     "invoicePaymentTerm": "90 days without deduction", "invoiceNewCustomer": false,
 
-    "shippingAddressType": "Customer",
+    "shippingAddressType": "Customer",   // same four values
     "shippingAccountNumber": "…", "shippingCompanyName": "…", "shippingCompanyNameTwo": "…",
     "shippingDepartment": "…", "shippingDepartmentTwo": "…", "shippingContactPerson": "…",
     "shippingStreet": "…", "shippingStreetTwo": "…", "shippingStreetThree": "…",
@@ -150,7 +153,7 @@ array, not in separate entries — that is how GPC groups them.
   "dongleId": "3-7619774",
   "endOldContract": "2026-07",        // YYYY-MM or YYYY-MM-DD
   "startNewContract": "2026-10",      // optional; omit to start the next month
-  "months": 12,                        // optional; 12 or more
+  "months": 12,                        // optional; omitted means 12, the minimum
   "articles": [
     "EXT SMA for Sensor Driver ARAMIS",
     "EXT SMA for ZEISS CORRELATE - Pro Line"
@@ -177,6 +180,17 @@ deliberate gap. The lapsed months are not charged.
 3. Shows a preview: every field that will change, every item that resolved, and
    every item that did not.
 4. Applies on confirmation, as one edit.
+
+## Fields the block deliberately has no say in
+
+`IsGomPartner` is not a block field. It is not a member of GPC's `OrderData`
+at all — the viewer derives the flag from whether an account number is set, and
+writing it produced files the configurator refused. A generator must not try to
+send it.
+
+`Currency/ValidFrom`, the relationship ids and the file timestamps are likewise
+the viewer's business: they come from the catalog and the save clock, not from
+the sending system.
 
 ## Compatibility
 

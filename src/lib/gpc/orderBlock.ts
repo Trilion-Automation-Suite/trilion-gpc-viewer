@@ -20,6 +20,16 @@ import { licenseOptions } from './licenses.ts'
 import type { LicenseOption } from './licenses.ts'
 import { MINIMUM_CONTRACT_MONTHS } from './contractTerm.ts'
 
+/**
+ * The only values GPC accepts for an address type.
+ *
+ * `applyOrderBlockFields` copies these strings through verbatim — they are
+ * free text in the file — so a generator that invents one produces an order
+ * the configurator cannot read back. Checked here rather than trusted, because
+ * the two sides of this format are written by different people.
+ */
+const ADDRESS_TYPES = ['Customer', 'GOM Partner', 'Order Process Center', 'Other Address']
+
 const BEGIN = '-----BEGIN GPC ORDER-----'
 const END = '-----END GPC ORDER-----'
 
@@ -230,6 +240,14 @@ export function planOrderBlock(block: OrderBlock, pdb: GpcContainer, openCatalog
   }
   if (block.priceList) {
     warnings.push(`Price list: ${block.priceList}`)
+  }
+  for (const field of ['invoiceAddressType', 'shippingAddressType'] as const) {
+    const value = block.administration?.[field]
+    if (typeof value === 'string' && value !== '' && !ADDRESS_TYPES.includes(value)) {
+      warnings.push(
+        `${field} is ${JSON.stringify(value)}, which GPC does not know. It accepts ${ADDRESS_TYPES.join(', ')}.`
+      )
+    }
   }
 
   const items: ResolvedItem[] = (block.items ?? []).map((item, index): ResolvedItem => {

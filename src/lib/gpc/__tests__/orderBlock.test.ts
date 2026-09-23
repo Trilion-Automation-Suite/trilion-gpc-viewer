@@ -325,3 +325,27 @@ describe('applying a block', () => {
     expect(changes.some((c) => c.startsWith('Account · accountNumber'))).toBe(false)
   })
 })
+
+describe('values GPC has to recognise', () => {
+  it('warns about an address type the configurator does not know', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock(
+      { ...BLOCK, administration: { invoiceAddressType: 'GPC Partner' }, items: [] },
+      pdb
+    )
+    // Copied through verbatim, so an invented value reaches GPC as-is.
+    expect(plan.warnings.join(' ')).toMatch(/invoiceAddressType is "GPC Partner", which GPC does not know/)
+    expect(plan.warnings.join(' ')).toContain('GOM Partner')
+  })
+
+  it('accepts the four it does know', () => {
+    const { pdb } = build()
+    for (const value of ['Customer', 'GOM Partner', 'Order Process Center', 'Other Address']) {
+      const plan = planOrderBlock(
+        { ...BLOCK, administration: { shippingAddressType: value }, items: [] },
+        pdb
+      )
+      expect(plan.warnings.join(' ')).not.toMatch(/does not know/)
+    }
+  })
+})
