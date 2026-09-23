@@ -5,6 +5,14 @@
  * month count — so the term and the price are the same fact seen twice. Both
  * the writer and the parser derive months the same way, from here, rather than
  * each having its own idea of what a term is.
+ *
+ * **A term is always whole months.** It starts on the first of a month and
+ * ends on the last day of one; there is no part-month agreement. That is not a
+ * convention this code chose, it is how the agreements are sold, and the
+ * pricing already assumes it: `monthsBetween` counts the start and end months
+ * in full, so a term running to the 14th would be charged to the 31st. Every
+ * date that goes into an agreement is snapped here, so the shape cannot be
+ * violated by a caller or by a date picker.
  */
 
 /**
@@ -12,6 +20,25 @@
  * length from here up is a valid term.
  */
 export const MINIMUM_CONTRACT_MONTHS = 12
+
+/** The first of `day`'s month — where a term always begins. */
+export function startOfMonth(day: string): string {
+  const [y, m] = day.slice(0, 10).split('-').map(Number)
+  if (!y) return ''
+  return `${y}-${String(m).padStart(2, '0')}-01`
+}
+
+/** The last day of `day`'s month — where a term always ends. */
+export function endOfMonth(day: string): string {
+  const [y, m] = day.slice(0, 10).split('-').map(Number)
+  if (!y) return ''
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10)
+}
+
+/** `2026-05` or `2026-05-17` -> `2026-05`, for a month input. */
+export function monthOf(day: string): string {
+  return day.slice(0, 7)
+}
 
 /**
  * Whole calendar months a term covers, inclusive of both ends — the same
@@ -51,4 +78,11 @@ export function termEnd(start: string, months: number): string {
   if (!y) return ''
   // Day 0 of the following month is the last day of the one before it.
   return new Date(Date.UTC(y, m - 1 + months, 0)).toISOString().slice(0, 10)
+}
+
+/** The month after `day`'s, as a first-of-month date. */
+export function nextMonthStart(day: string): string {
+  const [y, m] = day.slice(0, 10).split('-').map(Number)
+  if (!y) return ''
+  return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
 }

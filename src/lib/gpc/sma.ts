@@ -23,9 +23,26 @@ import { findSupportItem, plainSupportFilter, refreshSupportArticles } from './a
 import { addDependentListSupport } from './dependentList.ts'
 import type { DependentListSelection } from './dependentList.ts'
 import { findOption, sectionDefault } from './catalogIndex.ts'
-import { MINIMUM_CONTRACT_MONTHS, lapsedMonths, monthsBetween, termEnd } from './contractTerm.ts'
+import {
+  MINIMUM_CONTRACT_MONTHS,
+  endOfMonth,
+  lapsedMonths,
+  monthsBetween,
+  nextMonthStart,
+  startOfMonth,
+  termEnd,
+} from './contractTerm.ts'
 
-export { MINIMUM_CONTRACT_MONTHS, monthsBetween, lapsedMonths, termEnd } from './contractTerm.ts'
+export {
+  MINIMUM_CONTRACT_MONTHS,
+  endOfMonth,
+  lapsedMonths,
+  monthOf,
+  monthsBetween,
+  nextMonthStart,
+  startOfMonth,
+  termEnd,
+} from './contractTerm.ts'
 
 /** The section of `SMA_EXT` that chooses how the licence is held. */
 const LICENSE_MODEL_SECTION = 'License model'
@@ -60,11 +77,6 @@ function dateTime(day: string): string {
   return /T/.test(day) ? day : `${day}T00:00:00`
 }
 
-function shiftDays(day: string, days: number): string {
-  const [y, m, d] = day.slice(0, 10).split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
-}
-
 /**
  * The three dates a dongle row carries.
  *
@@ -79,13 +91,19 @@ export function contractDates(
   endNewContract: string
   endOldContract: string
 } {
-  const endOld = contract.endOldContract.slice(0, 10)
-  const start = (contract.startNewContract ?? shiftDays(endOld, 1)).slice(0, 10)
+  // Agreements run in whole months, so each date is snapped to the boundary it
+  // must fall on rather than trusted as given.
+  const endOld = endOfMonth(contract.endOldContract)
+  const start = contract.startNewContract
+    ? startOfMonth(contract.startNewContract)
+    : nextMonthStart(endOld)
   const months = Math.max(contract.months ?? MINIMUM_CONTRACT_MONTHS, MINIMUM_CONTRACT_MONTHS)
   return {
     endOldContract: dateTime(endOld),
     startNewContract: dateTime(start),
-    endNewContract: dateTime(contract.endNewContract ?? termEnd(start, months)),
+    endNewContract: dateTime(
+      contract.endNewContract ? endOfMonth(contract.endNewContract) : termEnd(start, months)
+    ),
   }
 }
 

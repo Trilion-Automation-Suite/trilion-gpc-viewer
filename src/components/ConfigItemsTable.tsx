@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentList } from '../types/order.ts'
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
-import { MINIMUM_CONTRACT_MONTHS } from '../lib/gpc/contractTerm.ts'
+import { MINIMUM_CONTRACT_MONTHS, monthOf } from '../lib/gpc/contractTerm.ts'
 import type { SmaContractEdit } from '../lib/gpc/sma.ts'
 import './ConfigItemsTable.css'
 
@@ -240,21 +240,21 @@ function DongleRowEditor({
               />
             </label>
             <label className="sma-field">
-              <span className="sma-info-label">Current agreement ends</span>
+              <span className="sma-info-label">Current agreement ends after</span>
               <input
                 className="sma-input"
-                type="date"
-                value={fmtDate(dongle.endOldContract)}
-                onChange={e => e.target.value && onContractChange(index, { endOldContract: e.target.value })}
+                type="month"
+                value={monthOf(dongle.endOldContract)}
+                onChange={e => e.target.value && onContractChange(index, { endOldContract: `${e.target.value}-01` })}
               />
             </label>
             <label className="sma-field">
               <span className="sma-info-label">New agreement starts</span>
               <input
                 className="sma-input"
-                type="date"
-                value={fmtDate(dongle.startNewContract)}
-                onChange={e => e.target.value && onContractChange(index, { startNewContract: e.target.value })}
+                type="month"
+                value={monthOf(dongle.startNewContract)}
+                onChange={e => e.target.value && onContractChange(index, { startNewContract: `${e.target.value}-01` })}
               />
             </label>
             <label className="sma-field">

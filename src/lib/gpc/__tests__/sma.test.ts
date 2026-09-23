@@ -377,3 +377,61 @@ describe('term length and gaps', () => {
     expect(msrp(twentyFour)).toBeCloseTo(msrp(twelve) * 2, 5)
   })
 })
+
+describe('a term is always whole months', () => {
+  it('snaps a mid-month end to the end of its month', () => {
+    // A term counted in whole months would charge to the 31st anyway, so the
+    // dates are made to say what the price already means.
+    const dates = contractDates({ endOldContract: '2026-04-17' })
+    expect(dates.endOldContract).toBe('2026-04-30T00:00:00')
+    expect(dates.startNewContract).toBe('2026-05-01T00:00:00')
+    expect(dates.endNewContract).toBe('2027-04-30T00:00:00')
+  })
+
+  it('snaps a mid-month start to the first of its month', () => {
+    const dates = contractDates({ endOldContract: '2026-07-31', startNewContract: '2026-10-14' })
+    expect(dates.startNewContract).toBe('2026-10-01T00:00:00')
+    expect(dates.endNewContract).toBe('2027-09-30T00:00:00')
+    expect(monthsBetween(dates.startNewContract, dates.endNewContract)).toBe(12)
+  })
+
+  it('snaps an explicit end date too', () => {
+    const dates = contractDates({
+      endOldContract: '2026-04-30',
+      endNewContract: '2027-06-15',
+    })
+    expect(dates.endNewContract).toBe('2027-06-30T00:00:00')
+  })
+
+  it('handles February and the turn of the year', () => {
+    expect(contractDates({ endOldContract: '2027-01-31' }).startNewContract).toBe('2027-02-01T00:00:00')
+    expect(contractDates({ endOldContract: '2027-01-31' }).endNewContract).toBe('2028-01-31T00:00:00')
+    expect(contractDates({ endOldContract: '2027-02-01', months: 12 }).endNewContract).toBe('2028-02-29T00:00:00')
+    expect(contractDates({ endOldContract: '2026-12-31' }).startNewContract).toBe('2027-01-01T00:00:00')
+  })
+
+  it('writes only month boundaries onto the rows', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-04-17', startNewContract: '2026-06-09', months: 18,
+    })
+    for (const row of rows(xmlOf(order))) {
+      expect(row.start).toMatch(/-01T00:00:00$/)
+      expect(row.endNew).toMatch(/-(?:28|29|30|31)T00:00:00$/)
+      expect(row.endOld).toMatch(/-(?:28|29|30|31)T00:00:00$/)
+    }
+    const [dongle] = smaDongles(order)
+    expect(dongle.startNewContract).toBe('2026-06-01T00:00:00')
+    expect(dongle.endNewContract).toBe('2027-11-30T00:00:00')
+    expect(dongle.months).toBe(18)
+  })
+
+  it('snaps on edit as well as on create', () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', { dongleId: 'd1', endOldContract: '2026-04-30' })
+    setSmaContract(order, pdb, 0, { startNewContract: '2026-09-20' })
+    const [dongle] = smaDongles(order)
+    expect(dongle.startNewContract).toBe('2026-09-01T00:00:00')
+    expect(dongle.endNewContract).toBe('2027-08-31T00:00:00')
+  })
+})

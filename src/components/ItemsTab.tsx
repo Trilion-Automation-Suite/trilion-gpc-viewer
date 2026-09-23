@@ -2,7 +2,14 @@ import { useState, useCallback } from 'react'
 import type { OrderSummary } from '../types/order.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
 import type { LicenseOption } from '../lib/gpc/licenses.ts'
-import { MINIMUM_CONTRACT_MONTHS, lapsedMonths, termEnd } from '../lib/gpc/contractTerm.ts'
+import {
+  MINIMUM_CONTRACT_MONTHS,
+  endOfMonth,
+  lapsedMonths,
+  monthOf,
+  nextMonthStart,
+  termEnd,
+} from '../lib/gpc/contractTerm.ts'
 import { ConfigItemsTable } from './ConfigItemsTable.tsx'
 import './ItemsTab.css'
 
@@ -59,17 +66,10 @@ export interface AddProductFields {
   sma?: SmaFields
 }
 
-/** Today, as a starting point for the date the current agreement runs out. */
-function defaultContractEnd(): string {
+/** The current month, as a starting point for when the agreement runs out. */
+function defaultContractEndMonth(): string {
   const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-/** Shown so the operator can see the term before committing to it. */
-function nextDay(day: string): string {
-  const [y, m, d] = day.split('-').map(Number)
-  if (!y) return ''
-  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 }
 
 function SearchProductModal({
@@ -85,8 +85,10 @@ function SearchProductModal({
   const [amount, setAmount] = useState(1)
   const [selected, setSelected] = useState<ArticleCatalogEntry | null>(null)
   const [dongleId, setDongleId] = useState('')
-  const [endOldContract, setEndOldContract] = useState(defaultContractEnd)
-  const [startNewContract, setStartNewContract] = useState('')
+  // Months, not dates: an agreement runs in whole months, so a day picker
+  // would only offer values that have to be snapped away again.
+  const [endOldMonth, setEndOldMonth] = useState(defaultContractEndMonth)
+  const [startMonth, setStartMonth] = useState('')
   const [months, setMonths] = useState(MINIMUM_CONTRACT_MONTHS)
   const [licenseUserEmail, setLicenseUserEmail] = useState('licensing@trilion.com')
   const [licenseUserName, setLicenseUserName] = useState('Trilion Licensing')
@@ -99,7 +101,8 @@ function SearchProductModal({
 
   const candidate = selected ?? (filtered.length === 1 ? filtered[0] : null)
   const needsContract = candidate?.isSoftwareSupport ?? false
-  const effectiveStart = startNewContract || nextDay(endOldContract)
+  const endOldContract = endOfMonth(`${endOldMonth}-01`)
+  const effectiveStart = startMonth ? `${startMonth}-01` : nextMonthStart(endOldContract)
   const gapMonths = lapsedMonths(endOldContract, effectiveStart)
 
   function handleSelect(entry: ArticleCatalogEntry) {
@@ -124,7 +127,7 @@ function SearchProductModal({
             sma: {
               dongleId: dongleId.trim(),
               endOldContract,
-              startNewContract: startNewContract || nextDay(endOldContract),
+              startNewContract: effectiveStart,
               months,
               licenseUserEmail,
               licenseUserName,
@@ -188,12 +191,12 @@ function SearchProductModal({
                 />
               </label>
               <label className="modal-label modal-label-sm">
-                Current agreement ends
+                Current agreement ends after
                 <input
                   className="modal-input"
-                  type="date"
-                  value={endOldContract}
-                  onChange={e => { setEndOldContract(e.target.value); setStartNewContract('') }}
+                  type="month"
+                  value={endOldMonth}
+                  onChange={e => { setEndOldMonth(e.target.value); setStartMonth('') }}
                   required
                 />
               </label>
@@ -201,10 +204,10 @@ function SearchProductModal({
                 New agreement starts
                 <input
                   className="modal-input"
-                  type="date"
-                  value={effectiveStart}
-                  min={nextDay(endOldContract)}
-                  onChange={e => setStartNewContract(e.target.value)}
+                  type="month"
+                  value={monthOf(effectiveStart)}
+                  min={monthOf(nextMonthStart(endOldContract))}
+                  onChange={e => setStartMonth(e.target.value)}
                 />
               </label>
               <label className="modal-label modal-label-sm">
