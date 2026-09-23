@@ -2,6 +2,9 @@ import { useState, useCallback } from 'react'
 import type { OrderSummary } from '../types/order.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
 import type { LicenseOption } from '../lib/gpc/licenses.ts'
+import { PasteOrderModal } from './PasteOrderModal.tsx'
+import type { GpcContainer } from '../lib/gpc/container.ts'
+import type { OrderBlockPlan } from '../lib/gpc/orderBlock.ts'
 import {
   MINIMUM_CONTRACT_MONTHS,
   endOfMonth,
@@ -29,9 +32,13 @@ interface ItemsTabProps {
   onSmaContractChange: (dongleIndex: number, patch: { dongleId?: string; endOldContract?: string }) => void
   onAddSmaExtension: (dongleIndex: number, articleName: string) => void
   onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
+  /** The open catalog, for the paste preview's warnings. Built on demand. */
+  getPdb: () => GpcContainer | null
+  openCatalog: string
+  onPasteOrder: (plan: OrderBlockPlan) => void
 }
 
-type ModalType = 'product' | 'license' | null
+type ModalType = 'product' | 'license' | 'paste' | null
 
 /**
  * A software maintenance agreement covers a dongle for a term, and neither is
@@ -343,6 +350,9 @@ export function ItemsTab({
   onSmaContractChange,
   onAddSmaExtension,
   onRemoveSmaExtension,
+  getPdb,
+  openCatalog,
+  onPasteOrder,
 }: ItemsTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [activeModal, setActiveModal] = useState<ModalType>(null)
@@ -423,6 +433,17 @@ export function ItemsTab({
               </svg>
               License
             </button>
+            <button
+              className="toolbar-pill-btn toolbar-add-btn"
+              onClick={() => setActiveModal('paste')}
+              title="Paste a whole order from the sales system"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="8" y="3" width="8" height="4" rx="1" />
+                <path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
+              </svg>
+              Paste Order
+            </button>
           </>
         )}
       </div>
@@ -440,6 +461,15 @@ export function ItemsTab({
       />
       {activeModal === 'product' && (
         <SearchProductModal catalog={getArticleCatalog()} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />
+      )}
+      {activeModal === 'paste' && (
+        <PasteOrderModal
+          order={order}
+          pdb={getPdb()}
+          openCatalog={openCatalog}
+          onApply={plan => { onPasteOrder(plan); setActiveModal(null) }}
+          onCancel={() => setActiveModal(null)}
+        />
       )}
       {activeModal === 'license' && (
         <SearchLicenseModal catalog={getLicenseCatalog()} onAdd={handleAddLicense} onCancel={() => setActiveModal(null)} />

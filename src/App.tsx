@@ -16,6 +16,9 @@ import {
 } from './lib/gpc/sma.ts'
 import type { SmaContractEdit } from './lib/gpc/sma.ts'
 import { addLicense, licenseOptionsFromConfig } from './lib/gpc/licenses.ts'
+import { applyOrderBlockFields, applyOrderBlockItems } from './lib/gpc/applyOrderBlock.ts'
+import type { OrderBlockPlan } from './lib/gpc/orderBlock.ts'
+import type { GpcContainer } from './lib/gpc/container.ts'
 import type { LicenseOption } from './lib/gpc/licenses.ts'
 import { readPdbConfig } from './lib/gpc/blankOrder.ts'
 import type { OrderDocument } from './lib/gpc/orderXml.ts'
@@ -301,6 +304,61 @@ export function App() {
       setAddItemError(err instanceof Error ? err.message : String(err))
     }
   }, [state, applyDocument])
+
+  /**
+   * The open catalog as a container, cached: the paste preview resolves every
+   * item against it, and re-reading the product database per keystroke would
+   * be unusable.
+   */
+  const pdbCache = useRef<{ key: string; pdb: GpcContainer } | null>(null)
+  const getPdb = useCallback((): GpcContainer | null => {
+    if (state.status !== 'loaded' || !state.result.configXml) return null
+    const configXml = state.result.configXml
+    const key = String(configXml.length)
+    if (pdbCache.current?.key !== key) {
+      pdbCache.current = { key, pdb: catalogContainer(configXml) }
+    }
+    return pdbCache.current.pdb
+  }, [state])
+
+  /**
+   * Applies a pasted order: the configuration onto the document, the customer
+   * and addresses onto the summary, as one edit.
+   *
+   * Items that failed are surfaced rather than swallowed — the operator has
+   * already seen the preview and chosen to go ahead without them, but they
+   * still need to know which ones did not make it.
+   */
+  const handlePasteOrder = useCallback((plan: OrderBlockPlan) => {
+    if (state.status !== 'loaded') return
+    const pdb = getPdb()
+    if (!pdb) {
+      setAddItemError('Cannot paste an order without the product database this order was built on.')
+      return
+    }
+    setAddItemError(null)
+    try {
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      const report = applyOrderBlockItems(doc, pdb, plan)
+      const orderXml = new TextDecoder().decode(serializeOrderXml(doc))
+      const withFields = applyOrderBlockFields(parseOrder(orderXml), plan)
+
+      setState(prev => (prev.status === 'loaded'
+        ? { ...prev, result: { ...prev.result, rawOrderXml: orderXml, order: withFields } }
+        : prev))
+      setOrder(withFields)
+      setIsDirty(true)
+
+      if (report.failed.length > 0) {
+        setAddItemError(
+          `Pasted, without ${report.failed.length} item${report.failed.length === 1 ? '' : 's'}: ` +
+          report.failed.map(f => `${f.what} — ${f.problem}`).join('; ')
+        )
+      }
+    } catch (err) {
+      setAddItemError(err instanceof Error ? err.message : String(err))
+    }
+  }, [state, getPdb])
 
   /** The agreements `SMA_EXT` offers, for the per-dongle picker. */
   const getSmaCatalog = useCallback((): string[] => {
@@ -772,6 +830,9 @@ export function App() {
                   onSmaContractChange={handleSmaContractChange}
                   onAddSmaExtension={handleAddSmaExtension}
                   onRemoveSmaExtension={handleRemoveSmaExtension}
+                  getPdb={getPdb}
+                  openCatalog={state.status === 'loaded' ? state.result.pdbVersion : ''}
+                  onPasteOrder={handlePasteOrder}
                 />
               )}
               {tab === 'account' && (

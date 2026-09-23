@@ -1,0 +1,103 @@
+.paste-order-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(760px, 92vw);
+  max-height: 88vh;
+  padding: 18px 20px;
+  overflow-y: auto;
+  background: var(--surface, #fff);
+  border-radius: 10px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.paste-order-input {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: inherit;
+  background: var(--surface-2, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--border, #c8c8c8);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.paste-order-error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  color: var(--danger, #b3261e);
+  background: color-mix(in srgb, var(--danger, #b3261e) 8%, transparent);
+  border-radius: 6px;
+}
+
+.paste-order-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.paste-order-source {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, #666);
+}
+
+.paste-order-warning {
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  background: color-mix(in srgb, #d98324 12%, transparent);
+  border-radius: 6px;
+}
+
+.paste-order-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.paste-order-heading {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #666);
+}
+
+.paste-order-heading--bad {
+  color: var(--danger, #b3261e);
+}
+
+.paste-order-list {
+  margin: 0;
+  padding-left: 16px;
+  max-height: 210px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.paste-order-list--fields {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+}
+
+.paste-order-item {
+  margin-right: 6px;
+}
+
+.paste-order-problem {
+  color: var(--danger, #b3261e);
+}
+
+.paste-order-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, #666);
+}
