@@ -17,6 +17,7 @@ import {
 import type { SmaContractEdit } from './lib/gpc/sma.ts'
 import { addLicense, licenseOptionsFromConfig } from './lib/gpc/licenses.ts'
 import { applyOrderBlockFields, applyOrderBlockItems } from './lib/gpc/applyOrderBlock.ts'
+import { catalogOfLink, clearOrderLink, readOrderLink } from './lib/orderLink.ts'
 import type { OrderBlockPlan } from './lib/gpc/orderBlock.ts'
 import type { GpcContainer } from './lib/gpc/container.ts'
 import type { LicenseOption } from './lib/gpc/licenses.ts'
@@ -88,6 +89,8 @@ export function App() {
   const [converting, setConverting] = useState(false)
   const [conversionReport, setConversionReport] = useState<ConversionReport | null>(null)
   const [addItemError, setAddItemError] = useState<string | null>(null)
+  /** A block that arrived in the address bar, waiting for its preview. */
+  const [linkedOrder, setLinkedOrder] = useState<string | null>(null)
 
   // Mutable order copy — this is what the tab components read/write in edit mode
   const [order, setOrder] = useState<OrderSummary | null>(null)
@@ -102,6 +105,45 @@ export function App() {
 
   useEffect(() => {
     loadLatestPdb().then(cached => setPdbCached(cached !== null)).catch(() => setPdbCached(false))
+  }, [])
+
+  /**
+   * An order handed over in the address bar.
+   *
+   * Read once, on load: a catalog is opened for it if none is, and the block
+   * then goes through the same preview a paste does. A link changes a
+   * customer's order and can arrive from anywhere, so it never applies itself.
+   *
+   * The block leaves the address bar immediately — a refresh should not
+   * re-offer an order that has already been applied, and the customer's
+   * details should not sit in the browser history.
+   */
+  useEffect(() => {
+    const text = readOrderLink(window.location.href)
+    if (!text) return
+    clearOrderLink()
+    let cancelled = false
+    void (async () => {
+      try {
+        const wanted = catalogOfLink(text)
+        const pdb = (wanted ? await getPdbFromLibrary(wanted) : null) ?? (await loadLatestPdb())
+        if (cancelled) return
+        if (!pdb) {
+          setState({
+            status: 'error',
+            message:
+              'This link carries an order, but no product database is loaded yet. ' +
+              'Drop a .gproducts catalog first, then open the link again.',
+          })
+          return
+        }
+        setState(opened(await createNewOrder(pdb)))
+        setLinkedOrder(text)
+      } catch (err) {
+        if (!cancelled) setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   // Adopt a newly opened file. Keyed on loadId, so editing the order already
@@ -833,6 +875,8 @@ export function App() {
                   getPdb={getPdb}
                   openCatalog={state.status === 'loaded' ? state.result.pdbVersion : ''}
                   onPasteOrder={handlePasteOrder}
+                  linkedOrder={linkedOrder}
+                  onLinkedOrderHandled={() => setLinkedOrder(null)}
                 />
               )}
               {tab === 'account' && (

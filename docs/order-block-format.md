@@ -171,6 +171,37 @@ pricing counts whole months regardless. Sending `2026-07-14` as
 A `startNewContract` later than the month after `endOldContract` leaves a
 deliberate gap. The lapsed months are not charged.
 
+## Opening the viewer on a link
+
+A block can travel in a URL instead of being copied, which is what a button in
+the sending system should do:
+
+```
+https://<viewer>/#order=<base64url of the same JSON>
+```
+
+`base64url` — `-` and `_` in place of `+` and `/`, no padding — so nothing
+needs escaping.
+
+It goes in the **fragment**, never the query string. A fragment is not sent to
+the server, so the customer's name, address and contact do not reach this
+app's host, any proxy between, or an access log. Build the link with
+`buildOrderLink` in `src/lib/orderLink.ts` rather than assembling it by hand.
+
+The viewer opens the catalog the block names — from its own library, falling
+back to the newest it has — starts an order on it, and then shows the same
+preview a paste gets. **A link never applies itself.** It changes a customer's
+order and it can arrive from anywhere, so a person confirms it. The block is
+removed from the address bar as soon as it is read, so a refresh does not
+re-offer an order that has already been applied.
+
+If no catalog is loaded at all, the viewer says so and asks for one; the link
+can then be opened again.
+
+A long order may exceed what a browser or a mail client will carry in a URL.
+There is no fixed limit worth quoting — fall back to the paste block when a
+link gets unwieldy.
+
 ## What the viewer does with it
 
 1. Decodes and validates. A malformed block is refused with the reason; nothing

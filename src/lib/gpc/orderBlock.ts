@@ -91,6 +91,21 @@ export interface OrderBlock {
 export class OrderBlockError extends Error {}
 
 /**
+ * Undoes a chat client's autocorrect.
+ *
+ * Only the characters that break a parse: the six quote glyphs, and the
+ * non-breaking space some clients substitute for a plain one. Dashes and
+ * ellipses are left alone — they are legal inside a JSON string and changing
+ * them would corrupt a company name.
+ */
+function straightenQuotes(text: string): string {
+  return text
+    .replace(/[\u201c\u201d\u201e\u201f]/g, '"')
+    .replace(/[\u2018\u2019\u201a\u201b]/g, "'")
+    .replace(/\u00a0/g, ' ')
+}
+
+/**
  * Pulls the JSON out of a pasted block.
  *
  * The envelope exists because raw JSON does not survive being copied through
@@ -134,8 +149,19 @@ export function decodeOrderBlock(text: string): OrderBlock {
   let parsed: unknown
   try {
     parsed = JSON.parse(json)
-  } catch (err) {
-    throw new OrderBlockError(`The block is not valid JSON: ${err instanceof Error ? err.message : String(err)}`)
+  } catch {
+    // A block written by an assistant in a chat window arrives as plain JSON,
+    // and chat clients turn quotes into typographic ones and hyphens into
+    // dashes on the way. The text is still unambiguous; only the glyphs
+    // changed. Retried rather than refused, because the person pasting it did
+    // not choose those characters and cannot see them.
+    try {
+      parsed = JSON.parse(straightenQuotes(json))
+    } catch (err) {
+      throw new OrderBlockError(
+        `The block is not valid JSON: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
   }
   if (!parsed || typeof parsed !== 'object') throw new OrderBlockError('The block is not an object.')
 

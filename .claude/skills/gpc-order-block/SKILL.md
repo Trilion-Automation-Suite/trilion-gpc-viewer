@@ -27,6 +27,22 @@ python3 .claude/skills/gpc-order-block/make_block.py order.json
 It prints the envelope on success and the reason on failure. Never hand the
 user a block you have not run through it.
 
+### When you have no filesystem
+
+In a chat window — ChatGPT, claude.ai, anywhere without tools — you cannot run
+that script, and **you must not try to base64 anything by hand.** A model
+cannot encode base64 reliably, and a block that is one character wrong decodes
+to nonsense with no clue as to where.
+
+**Give the JSON instead.** The viewer accepts a bare JSON document as readily
+as an envelope, and reads it even after a chat client has curled the quotes or
+slipped in a non-breaking space. Put it in a fenced code block so the client
+does not reflow it, and walk through the checks in "What is mandatory" and
+"The rules worth knowing" yourself before handing it over.
+
+The envelope only earns its keep when a block travels through mail or a
+ticketing system. A paste straight out of a chat does not need it.
+
 ## What is mandatory
 
 Only three things, and one of them catches people out:

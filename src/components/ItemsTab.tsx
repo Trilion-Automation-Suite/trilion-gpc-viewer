@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { OrderSummary } from '../types/order.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
 import type { LicenseOption } from '../lib/gpc/licenses.ts'
@@ -36,6 +36,9 @@ interface ItemsTabProps {
   getPdb: () => GpcContainer | null
   openCatalog: string
   onPasteOrder: (plan: OrderBlockPlan) => void
+  /** A block that arrived by link; opens the preview as soon as it is set. */
+  linkedOrder: string | null
+  onLinkedOrderHandled: () => void
 }
 
 type ModalType = 'product' | 'license' | 'paste' | null
@@ -353,9 +356,17 @@ export function ItemsTab({
   getPdb,
   openCatalog,
   onPasteOrder,
+  linkedOrder,
+  onLinkedOrderHandled,
 }: ItemsTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+
+  // An order that arrived by link opens its preview by itself; there is no
+  // other way for the operator to know it is there.
+  useEffect(() => {
+    if (linkedOrder) setActiveModal('paste')
+  }, [linkedOrder])
 
   const expandableKeys = order.items
     .filter((i) => i.sections.length > 0 || i.userZeissId !== undefined || i.userName !== undefined)
@@ -467,8 +478,9 @@ export function ItemsTab({
           order={order}
           pdb={getPdb()}
           openCatalog={openCatalog}
-          onApply={plan => { onPasteOrder(plan); setActiveModal(null) }}
-          onCancel={() => setActiveModal(null)}
+          initialText={linkedOrder ?? ''}
+          onApply={plan => { onPasteOrder(plan); setActiveModal(null); onLinkedOrderHandled() }}
+          onCancel={() => { setActiveModal(null); onLinkedOrderHandled() }}
         />
       )}
       {activeModal === 'license' && (

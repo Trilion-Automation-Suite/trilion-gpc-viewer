@@ -367,3 +367,25 @@ describe('blocks that arrive damaged', () => {
     expect(() => decodeOrderBlock('Dear Bob,\n\nplease find attached')).toThrow(/does not look like a GPC order block/)
   })
 })
+
+describe('JSON pasted out of a chat window', () => {
+  it('reads it after a client has curled the quotes', () => {
+    const curled = JSON.stringify(BLOCK)
+      .replace(/"/g, (_m, i, s: string) => (s[i - 1] === ':' || s[i - 1] === ',' || s[i - 1] === '{' || s[i - 1] === '[' ? '“' : '”'))
+    expect(() => JSON.parse(curled)).toThrow()
+    expect(decodeOrderBlock(curled).catalog).toBe('PDB290_09-2026')
+  })
+
+  it('reads it with a non-breaking space in it', () => {
+    const nbsp = JSON.stringify(BLOCK).replace('Boeing', 'Boeing').replace(/ /g, ' ')
+    expect(decodeOrderBlock(nbsp).gpcOrder).toBe(ORDER_BLOCK_VERSION)
+  })
+
+  it('leaves dashes alone — they are legal inside a name', () => {
+    const block = decodeOrderBlock(JSON.stringify({
+      ...BLOCK,
+      account: { companyName: 'Zeiss — Oberkochen' },
+    }))
+    expect(block.account?.companyName).toBe('Zeiss — Oberkochen')
+  })
+})
