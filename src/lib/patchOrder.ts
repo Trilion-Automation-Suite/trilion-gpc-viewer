@@ -12,13 +12,15 @@
  */
 
 import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, TechnicalContact } from '../types/order.js'
+import { MEMBER_ORDER } from './gpc/memberOrder.ts'
 
 // ---------------------------------------------------------------------------
 // DOM helpers
 // ---------------------------------------------------------------------------
 
 /**
- * `OrderData`'s members in C# declaration order (2.9.8).
+ * Member order comes from `memberOrder.ts`, generated from GPC's own class
+ * declarations.
  *
  * `XmlSerializer` writes and reads a class's members as a *sequence*, so an
  * element in the wrong place — or one that names no member at all — makes
@@ -26,37 +28,14 @@ import type { AccountDetails, ConfigItem, OrderAdministration, OrderSummary, Tec
  * which reads like a missing relationship and is really its catch-all for any
  * OPC or deserialization error.
  *
- * Used to place a root element that the open file does not already have.
- * Appending it instead, which is what this module used to do, produced exactly
- * that failure.
+ * These orders cannot be inferred from reference files: a member GPC left null
+ * is simply absent, so an order that looks right can still be unreadable the
+ * moment someone fills in an address. Three of them were wrong for exactly
+ * that reason until the declarations were consulted.
  */
-/**
- * Member order for the nested classes, from the same 2.9.8 declarations, and
- * confirmed against the artifacts: every reference file's AccountDetailsData,
- * LocalTechnicalContact and OrderAdministration list their members in exactly
- * this relative order.
- */
-const NESTED_MEMBERS: Record<string, string[]> = {
-  AccountDetailsData: ['AccountNumber', 'VatId', 'City', 'CompanyName', 'CompanyNameTwo', 'CompanyType', 'Country', 'CustomerIdAtGom', 'Department', 'DepartmentTwo', 'Email', 'HpcPoBox', 'IsDistributor', 'IsNewCustomer', 'Phone', 'PhoneCountryCode', 'PhonePrefix', 'Reference', 'StateProvince', 'Street', 'StreetTwo', 'StreetThree', 'Website', 'ZipPostalCode'],
-  LocalTechnicalContact: ['AcademicDegree', 'AdditionalEmail', 'AdditionalPhone', 'AdditionalPhoneCountryCode', 'AdditionalPhonePrefix', 'BusinessPhone', 'BusinessPhoneCountryCode', 'BusinessPhonePrefix', 'Department', 'Email', 'FirstName', 'Gender', 'IsOtherDepartment', 'IsOtherPosition', 'IsOtherSource', 'LastName', 'MobilePhone', 'MobilePhoneCountryCode', 'MobilePhonePrefix', 'Position', 'Source', 'Title'],
-  OrderAdministration: ['InvoiceAccountNumber', 'InvoiceAddressType', 'InvoiceCity', 'InvoiceCompanyName', 'InvoiceCompanyNameTwo', 'InvoiceCountry', 'InvoiceDepartment', 'InvoiceDepartmentTwo', 'InvoiceHPCPOBox', 'InvoiceNewCustomer', 'InvoiceState', 'InvoiceStreet', 'InvoiceStreetTwo', 'InvoiceStreetThree', 'InvoiceZIP', 'InvoicePaymentTerm', 'IsTarifNumberToggler', 'ShippingAccountNumber', 'ShippingAddressType', 'ShippingCity', 'ShippingCompanyName', 'ShippingCompanyNameTwo', 'ShippingContactPerson', 'ShippingCountry', 'ShippingDepartment', 'ShippingDepartmentTwo', 'ShippingHPCPOBox', 'ShippingMethod', 'ShippingNewCustomer', 'ShippingState', 'ShippingStreet', 'ShippingStreetTwo', 'ShippingStreetThree', 'ShippingZIP', 'ShippingFreightTerm', 'SpecialShippingInstructions'],
-}
+const NESTED_MEMBERS = MEMBER_ORDER
 
-const ORDER_DATA_MEMBERS = [
-  'DependentListsData', 'FreeArticlesData', 'FreeListArticlesData', 'SupportArticlesData',
-  'AccountDetailsData', 'AttachedFiles', 'CaseId', 'CleanOrder', 'ReasonUnclean', 'Comment',
-  'CreationDate', 'Destination', 'DestinationNew', 'DiscountForCustomer',
-  'DiscountSplitPercentShare', 'DiscountSplitCurrencyShare', 'Distributor', 'Duration',
-  'EndDate', 'ExchangeRate', 'OrderUsedInWeaponProduction', 'FinalPriceForEndCustomer',
-  'FinalPriceForEndCustomerLocalCurrency', 'FinalPriceForEndCustomerWithHandlingFee',
-  'GomCurrency', 'Currency', 'DifferentLocalCurrencyIso', 'HandlingFee', 'HandlingFeeName',
-  'HasPriceOnRequest', 'HOMCenter', 'IsCustomerDiscountAcknowledged',
-  'DifferentFinalPriceForEndCustomerChecked', 'DirectSalesChecked', 'IsHandlingFeeApplicable',
-  'ContractType', 'LastModified', 'LocalTechnicalContact', 'Msrp', 'Dp', 'OrderAdministration',
-  'OrderDate', 'OrderGuid', 'OrderNumber', 'OrderStatus', 'OrderValueToGom',
-  'OrderValueToGomWithHandlingFee', 'OpportunityID', 'GomOrderNumber', 'PriceList',
-  'SaleInformations', 'SourceFileName', 'Username', 'FinalizeUsername', 'FinalizedDateTime',
-]
+const ORDER_DATA_MEMBERS = MEMBER_ORDER.OrderData
 
 /**
  * Adds a root element in its declared position, or does nothing when there is
