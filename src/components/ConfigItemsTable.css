@@ -570,3 +570,29 @@
 .sma-input-sm {
   min-width: 80px;
 }
+
+/*
+ * The questions a configuration item asks. GPC labels these inputs with the
+ * catalog's own wording, which differs per line — a dongle serial on spare
+ * parts, the licence user on an agreement — so the label is part of the field.
+ */
+.user-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.user-field-question {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--text-muted, #666);
+}
+
+.user-fields-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}

@@ -460,13 +460,25 @@ function findElementByNo(container: Element, no: string): Element | null {
   return null
 }
 
-/** Patch Reply1 (email) and Reply2 (name) for SMA sub-items that have user fields set. */
+/**
+ * Writes Reply1/Reply2 — the answers to the configuration item's questions.
+ *
+ * Every kind of line can ask something: an agreement asks for the licence
+ * user, a spare part asks which dongle it belongs to. This used to search
+ * `DependentListsData` alone, so an answer typed on a free-list line was
+ * parsed, shown, edited and then silently dropped on save.
+ */
 function patchLicenseUserFields(doc: Document, items: ConfigItem[]): void {
   const relevantItems = items.filter(i => i.userZeissId !== undefined || i.userName !== undefined)
   if (relevantItems.length === 0) return
 
-  // Search in DependentListsData containers (findElementByNo recurses into SubConfigurations)
-  const candidates = doc.getElementsByTagName('DependentListsData')
+  // findElementByNo recurses into SubConfigurations.
+  const candidates = [
+    ...Array.from(doc.getElementsByTagName('DependentListsData')),
+    ...Array.from(doc.getElementsByTagName('FreeListArticlesData')),
+    ...Array.from(doc.getElementsByTagName('FreeArticlesData')),
+    ...Array.from(doc.getElementsByTagName('SupportArticlesData')),
+  ]
   for (const item of relevantItems) {
     for (let i = 0; i < candidates.length; i++) {
       const el = findElementByNo(candidates[i], item.no)

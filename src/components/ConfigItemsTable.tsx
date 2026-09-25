@@ -150,8 +150,18 @@ function UserFieldsRow({
   onLicenseUserChange: (no: string, patch: { userZeissId?: string; userName?: string }) => void
   colSpan: number
 }) {
-  const hasUserFields = item.userZeissId !== undefined || item.userName !== undefined
-  if (!hasUserFields) return null
+  // A line shows these when the catalog asks something about it, not only when
+  // an answer is already on file — otherwise a freshly pasted order gives the
+  // operator nowhere to type the dongle the part belongs to.
+  const asks = item.question1 !== undefined || item.question2 !== undefined
+  const answered = item.userZeissId !== undefined || item.userName !== undefined
+  if (!asks && !answered) return null
+
+  // The catalog's own wording. Falling back to the licence-user labels, which
+  // is what every line used to be labelled with regardless of what it asked.
+  const label1 = item.question1 ?? 'ZEISS ID / email'
+  const label2 = item.question2 ?? 'User name'
+  const showSecond = item.question2 !== undefined || item.userName !== undefined
 
   return (
     <tr className="user-fields-row">
@@ -159,20 +169,26 @@ function UserFieldsRow({
       <td colSpan={colSpan - 1}>
         {isEditing ? (
           <div className="user-fields-inputs">
-            <input
-              className="user-field-input"
-              placeholder="ZEISS ID / email"
-              value={item.userZeissId ?? ''}
-              onChange={e => onLicenseUserChange(item.no, { userZeissId: e.target.value })}
-              aria-label="License user ZEISS ID"
-            />
-            <input
-              className="user-field-input"
-              placeholder="User name"
-              value={item.userName ?? ''}
-              onChange={e => onLicenseUserChange(item.no, { userName: e.target.value })}
-              aria-label="License user name"
-            />
+            <label className="user-field-label">
+              <span className="user-field-question">{label1}</span>
+              <input
+                className="user-field-input"
+                value={item.userZeissId ?? ''}
+                onChange={e => onLicenseUserChange(item.no, { userZeissId: e.target.value })}
+                aria-label={label1}
+              />
+            </label>
+            {showSecond && (
+              <label className="user-field-label">
+                <span className="user-field-question">{label2}</span>
+                <input
+                  className="user-field-input"
+                  value={item.userName ?? ''}
+                  onChange={e => onLicenseUserChange(item.no, { userName: e.target.value })}
+                  aria-label={label2}
+                />
+              </label>
+            )}
           </div>
         ) : (
           <span className="user-fields-view">

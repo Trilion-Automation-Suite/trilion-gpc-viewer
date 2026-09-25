@@ -181,8 +181,17 @@ export interface ConfigItem {
   isSub: boolean           // true if no contains "."
   itemType: 'dependent' | 'free' | 'freeList' | 'support' | 'sub'
   sections: SectionDetail[] // article-level breakdown (empty for non-dependent types)
-  userZeissId?: string     // license user ZEISS ID / email
-  userName?: string        // license user name
+  /**
+   * What the catalog asks about this line, from the configuration item's
+   * Question1/2/3. A spare-parts line asks for the dongle or sensor serial the
+   * part belongs to; an SMA line asks for the licence user. The answers are
+   * Reply1/2/3 below, and the question is what the operator should be shown.
+   */
+  question1?: string
+  question2?: string
+  question3?: string
+  userZeissId?: string     // Reply1 — the answer to Question1
+  userName?: string       // Reply2 — the answer to Question2        // license user name
   isNew?: boolean          // true for items created in this session (not from XML)
   sma?: SmaDetails         // SMA contract/dongle/article details (when applicable)
 }

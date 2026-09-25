@@ -53,6 +53,12 @@ export interface ArticleItem {
   sapNr?: string
   name?: string
   amount?: number
+  /**
+   * The answer to the question the catalog asks about this line, stored as
+   * `Reply1`. Spare parts ask which installation the part belongs to, by
+   * sensor serial or dongle id.
+   */
+  note?: string
 }
 
 export interface LicenseItem {
@@ -192,7 +198,7 @@ export interface ResolvedItem {
   item: OrderBlockItem
   /** What the viewer will add. Absent when `problem` is set. */
   resolved?:
-    | { kind: 'article'; articleName: string; amount: number }
+    | { kind: 'article'; articleName: string; amount: number; note?: string }
     | { kind: 'license'; option: LicenseOption; userEmail?: string; userName?: string }
     | { kind: 'sma'; item: SmaItem; articleNames: string[] }
   /** Why it could not be matched. Shown to the operator; never silently dropped. */
@@ -341,7 +347,11 @@ export function planOrderBlock(
             problem: `Amount ${JSON.stringify(item.amount)} is not a whole number of 1 or more. GPC counts articles in whole units.`,
           }
         }
-        return { index, item, resolved: { kind: 'article', articleName: found.articleName, amount } }
+        return {
+          index,
+          item,
+          resolved: { kind: 'article', articleName: found.articleName, amount, ...(item.note ? { note: item.note } : {}) },
+        }
       }
       case 'license': {
         if (!item.name) return { index, item, problem: 'A license item needs a "name".' }
@@ -384,7 +394,7 @@ export function planOrderBlock(
 export function describeItem(entry: ResolvedItem): string {
   const { item, resolved } = entry
   if (resolved?.kind === 'article') {
-    return `${resolved.amount} × ${resolved.articleName}`
+    return `${resolved.amount} × ${resolved.articleName}${resolved.note ? ` (${resolved.note})` : ''}`
   }
   if (resolved?.kind === 'license') {
     return `Licence: ${resolved.option.articleName} (${resolved.option.itemName})`

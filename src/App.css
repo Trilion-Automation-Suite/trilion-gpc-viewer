@@ -451,3 +451,26 @@
   white-space: nowrap;
   opacity: .85;
 }
+
+/*
+ * An order that arrived by link before this browser had a catalog. Held rather
+ * than refused: storage is per-origin and per-browser, so opening a link in a
+ * browser that has never loaded a catalog is an ordinary thing to do, and
+ * throwing the order away would mean fetching it from the sales system again.
+ */
+.pending-link-bar {
+  margin: 0 0 14px;
+  padding: 11px 14px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  background: color-mix(in srgb, #d98324 12%, transparent);
+  border: 1px solid color-mix(in srgb, #d98324 35%, transparent);
+  border-radius: 8px;
+}
+
+.pending-link-bar code {
+  padding: 1px 5px;
+  font-size: 0.85em;
+  background: var(--surface-2, rgba(0, 0, 0, 0.06));
+  border-radius: 4px;
+}

@@ -72,6 +72,7 @@ export function applyOrderBlockItems(
         addCatalogArticle(order, pdb, resolved.articleName, {
           amount: resolved.amount,
           ...(priceList ? { priceListName: priceList } : {}),
+          ...(resolved.note ? { reply1: resolved.note } : {}),
         })
         report.added.push(`${resolved.amount} × ${resolved.articleName}`)
       } else if (resolved.kind === 'license') {

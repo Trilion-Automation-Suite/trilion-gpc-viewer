@@ -112,6 +112,7 @@ be matched is **reported, not guessed** — a paste never silently drops a line.
 ```jsonc
 { "type": "article", "sapNr": "000250-0004-933", "amount": 1 }
 { "type": "article", "name": "Calibration Panel CPA30/210", "amount": 2 }
+{ "type": "article", "sapNr": "000250-0004-900", "note": "3-1234567" }
 ```
 
 `sapNr` is the **ZEISS** SAP number — the one the GPC catalog keys articles on,
@@ -129,6 +130,11 @@ given. That case is real — PDB290 has SAP numbers shared by more than one
 article — and it is also why the vendor rows are dated: ZEISS numbers and
 prices move between PDB releases, so a generator should read the row valid for
 the order and set `catalog` to the release it belongs to.
+
+`note` answers whatever the catalog asks about that line, and is stored as the
+line's `Reply1`. A spare part asks which installation it belongs to — "by
+serial number of sensor or by dongle ID" — and GPC shows the question beside
+the field. Leave it out and the line is added with the question unanswered.
 
 `amount` is a **whole number**, defaulting to 1. GPC declares it as an `int`,
 so a fraction cannot be represented: a block carrying one is refused rather

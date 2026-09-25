@@ -196,6 +196,23 @@ function parseSmaDetails(el: Element): SmaDetails {
 // Item parsers
 // ---------------------------------------------------------------------------
 
+/**
+ * Copies the configuration item's questions onto the line.
+ *
+ * GPC prompts for Reply1/2/3 with these, and they differ per item — "identify
+ * related installation (by serial number of sensor or by dongle ID)" on spare
+ * parts, the licence user on an agreement. Without them the viewer has to
+ * guess at a label, and it guessed the SMA one for everything.
+ */
+function applyQuestions(item: ConfigItem, ciEl: Element): void {
+  const q1 = childText(ciEl, 'Question1')
+  const q2 = childText(ciEl, 'Question2')
+  const q3 = childText(ciEl, 'Question3')
+  if (q1) item.question1 = q1
+  if (q2) item.question2 = q2
+  if (q3) item.question3 = q3
+}
+
 function parseDependentItem(el: Element, itemType: 'dependent' | 'sub'): ConfigItem {
   const no = childText(el, 'No')
   const ciEl = directChild(el, 'ConfigurationItem')
@@ -215,6 +232,7 @@ function parseDependentItem(el: Element, itemType: 'dependent' | 'sub'): ConfigI
     itemType,
     sections: parseSections(el),
   }
+  if (ciEl) applyQuestions(item, ciEl)
   if (userZeissId !== undefined) item.userZeissId = userZeissId
   if (userName !== undefined) item.userName = userName
   if (isSmaItem(el)) {
@@ -334,6 +352,7 @@ function parseSimpleItems(
       itemType,
       sections,
     }
+    if (ciEl) applyQuestions(item, ciEl)
     if (userZeissId !== undefined) item.userZeissId = userZeissId
     if (userName !== undefined) item.userName = userName
     if (isSmaItem(el)) {

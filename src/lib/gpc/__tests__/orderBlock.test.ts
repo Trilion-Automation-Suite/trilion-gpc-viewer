@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parseOrderXml, serializeOrderXml } from '../orderXml.ts'
 import { catalogContainer } from '../catalogContainer.ts'
 import { parseOrder } from '../../parseOrder.js'
-import { decodeOrderBlock, planOrderBlock, ORDER_BLOCK_VERSION } from '../orderBlock.ts'
+import { decodeOrderBlock, describeItem, planOrderBlock, ORDER_BLOCK_VERSION } from '../orderBlock.ts'
 import type { OrderBlock } from '../orderBlock.ts'
 import { applyOrderBlockItems, applyOrderBlockFields, fieldChanges } from '../applyOrderBlock.ts'
 import { smaDongles } from '../sma.ts'
@@ -470,5 +470,28 @@ describe('currency', () => {
     const { pdb } = build()
     const plan = planOrderBlock({ ...BLOCK, currency: 'EUR', items: [] }, pdb, undefined, 'EUR')
     expect(plan.warnings.join(' ')).not.toMatch(/block is for/)
+  })
+})
+
+describe('the question a line asks', () => {
+  it('carries a note onto the line as Reply1', () => {
+    const order = parseOrderXml(new TextEncoder().encode(ORDER))
+    const pdb = catalogContainer(CONFIG)
+    const plan = planOrderBlock(
+      { ...BLOCK, items: [{ type: 'article', name: 'Calibration Panel CPA30/210', note: '3-1234567' }] },
+      pdb
+    )
+    expect(applyOrderBlockItems(order, pdb, plan).failed).toEqual([])
+    // GPC prompts for this with the item's Question1 and stores it in Reply1.
+    expect(new TextDecoder().decode(serializeOrderXml(order))).toContain('<Reply1>3-1234567</Reply1>')
+  })
+
+  it('shows the note in the preview, so it can be checked before applying', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock(
+      { ...BLOCK, items: [{ type: 'article', name: 'Calibration Panel CPA30/210', note: '3-1234567' }] },
+      pdb
+    )
+    expect(describeItem(plan.items[0])).toContain('(3-1234567)')
   })
 })

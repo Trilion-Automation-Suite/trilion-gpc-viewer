@@ -92,6 +92,8 @@ export function App() {
   const [addItemError, setAddItemError] = useState<string | null>(null)
   /** A block that arrived in the address bar, waiting for its preview. */
   const [linkedOrder, setLinkedOrder] = useState<string | null>(null)
+  /** The same, held back until this browser has a catalog to resolve it against. */
+  const [pendingLink, setPendingLink] = useState<string | null>(null)
 
   // Mutable order copy — this is what the tab components read/write in edit mode
   const [order, setOrder] = useState<OrderSummary | null>(null)
@@ -130,12 +132,11 @@ export function App() {
         const pdb = (wanted ? await getPdbFromLibrary(wanted) : null) ?? (await loadLatestPdb())
         if (cancelled) return
         if (!pdb) {
-          setState({
-            status: 'error',
-            message:
-              'This link carries an order, but no product database is loaded yet. ' +
-              'Drop a .gproducts catalog first, then open the link again.',
-          })
+          // Keep the order. Storage is per-origin and per-browser, so a link
+          // opened in a browser that has never seen a catalog is ordinary, not
+          // an error — and losing the order would mean going back to Odoo for
+          // it. It is applied as soon as a catalog arrives.
+          setPendingLink(text)
           return
         }
         setState(opened(await createNewOrder(pdb)))
@@ -176,10 +177,15 @@ export function App() {
       setPdbLibrary(await listPdbLibrary())
       const result = await createNewOrder(pdb)
       setState(opened(result))
+      // An order that arrived by link before this browser had a catalog.
+      if (pendingLink) {
+        setLinkedOrder(pendingLink)
+        setPendingLink(null)
+      }
     } catch (err) {
       setState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
     }
-  }, [])
+  }, [pendingLink])
 
   const handleFile = useCallback(async (file: File, handle?: FileSystemFileHandle) => {
     if (file.name.endsWith('.gproducts')) {
@@ -817,6 +823,14 @@ export function App() {
       <main className="app">
         {state.status === 'idle' && (
           <div className="app-idle">
+            {pendingLink && (
+              <div className="pending-link-bar">
+                <strong>An order is waiting.</strong> It came in through the link, but this
+                browser has no product catalog stored yet — catalogs are kept per browser, so
+                one loaded elsewhere is not available here. Drop a <code>.gproducts</code>
+                file and the order opens straight after.
+              </div>
+            )}
             {pdbCached !== null && (
               <div className="new-order-bar">
                 <button
