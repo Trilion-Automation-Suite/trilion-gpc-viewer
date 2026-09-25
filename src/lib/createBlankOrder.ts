@@ -19,7 +19,8 @@
  *   - PriceList: Partner
  *   - Currency: USD
  *   - Country: United States of America
- *   - InvoiceAddressType / ShippingAddressType: GOM Partner
+ *   - InvoiceAddressType / ShippingAddressType: GOMPartner (the enum's
+ *     member name — "GOM Partner" is only the label the UI shows)
  *   - ShippingMethod: Air, ShippingFreightTerm: FCA
  *   - InvoicePaymentTerm: 90 days without deduction
  */
@@ -64,11 +65,11 @@ export function createBlankOrderXml(): string {
   <Msrp>0</Msrp>
   <Dp>0</Dp>
   <OrderAdministration>
-    <InvoiceAddressType>GOM Partner</InvoiceAddressType>
+    <InvoiceAddressType>GOMPartner</InvoiceAddressType>
     <InvoiceNewCustomer>false</InvoiceNewCustomer>
     <InvoicePaymentTerm>90 days without deduction</InvoicePaymentTerm>
     <IsTarifNumberToggler>false</IsTarifNumberToggler>
-    <ShippingAddressType>GOM Partner</ShippingAddressType>
+    <ShippingAddressType>GOMPartner</ShippingAddressType>
     <ShippingMethod>Air</ShippingMethod>
     <ShippingNewCustomer>false</ShippingNewCustomer>
     <ShippingFreightTerm>FCA</ShippingFreightTerm>

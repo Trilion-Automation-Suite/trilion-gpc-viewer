@@ -25,9 +25,13 @@ VERSION = 1
 BEGIN = "-----BEGIN GPC ORDER-----"
 END = "-----END GPC ORDER-----"
 
-# GPC stores these as free text, so a value it does not know reaches the file
-# intact and is silently not understood. The viewer warns; this refuses.
-ADDRESS_TYPES = ("Customer", "GOM Partner", "Order Process Center", "Other Address")
+# AddressType is a C# enum and travels as its member NAME. The labels GPC's UI
+# shows -- "GOM Partner", "Order Process Center", "Other Address" -- make .NET
+# refuse the entire document with an instance-validation error, which GPC
+# reports as "This file has no Order-Part".
+ADDRESS_TYPES = ("Customer", "GOMPartner", "HomCenter", "Other")
+ADDRESS_LABELS = {"GOM Partner": "GOMPartner", "Order Process Center": "HomCenter",
+                  "Other Address": "Other", "GPC Partner": "GOMPartner"}
 
 MINIMUM_CONTRACT_MONTHS = 12
 
@@ -58,8 +62,12 @@ def validate(block: dict) -> list[str]:
     admin = block.get("administration") or {}
     for field in ("invoiceAddressType", "shippingAddressType"):
         value = admin.get(field)
-        if value not in (None, "") and value not in ADDRESS_TYPES:
-            fail(f"{field} is {value!r}. GPC accepts only: " + ", ".join(ADDRESS_TYPES) + ".")
+        if value in (None, "") or value in ADDRESS_TYPES:
+            continue
+        if value in ADDRESS_LABELS:
+            fail(f"{field} is {value!r}, which is the label GPC shows, not what it stores. "
+                 f"Use {ADDRESS_LABELS[value]!r}.")
+        fail(f"{field} is {value!r}. AddressType accepts only: " + ", ".join(ADDRESS_TYPES) + ".")
 
     items = block.get("items") or []
     if not isinstance(items, list):

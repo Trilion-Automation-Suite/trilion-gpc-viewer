@@ -61,6 +61,22 @@ export const CHILD_CLASS: Record<string, Record<string, string>> = {
   SupportScreenData: { ConfigurationItemDataCalculation: 'ConfigurationItemDataCalculation', ConfigurationItem: 'ConfigurationItem', HardwareSupportArticles: '[]SupportArticle', SoftwareSupportArticles: '[]SupportArticle', DependentListSupportScreenDatas: '[]DependentListSupportScreenData' },
 }
 
+/**
+ * Values each enum-typed element accepts, keyed `Class.Element`.
+ *
+ * XmlSerializer writes an enum as its member *name*. A display label — "GOM
+ * Partner" where the enum says `GOMPartner` — is an "Instance validation
+ * error" and the whole document fails to deserialize.
+ */
+export const ENUM_VALUES: Record<string, readonly string[]> = {
+  'OrderData.ContractType': ['Loan', 'Purchase', 'Rent'],
+  'OrderData.OrderStatus': ['Editing', 'Finalized'],
+  'OrderAdministration.InvoiceAddressType': ['Customer', 'GOMPartner', 'HomCenter', 'Other'],
+  'OrderAdministration.ShippingAddressType': ['Customer', 'GOMPartner', 'HomCenter', 'Other'],
+  'ConfigurationItem.ItemType': ['DependentList', 'FreeList', 'Supportextension', 'DongleList', 'FreeArticles', 'DiscountArticles'],
+  'SectionArticleScreenData.AmountMode': ['Implication', 'SectionSpecialFunction', 'UserChoice', 'SoftImplication', 'Default', 'Reset', 'None'],
+}
+
 /** The order members of `className` must be written in, or null if unknown. */
 export function memberOrder(className: string): readonly string[] | null {
   return MEMBER_ORDER[className] ?? null

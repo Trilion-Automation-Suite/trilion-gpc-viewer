@@ -86,8 +86,10 @@ Line`. Get the spelling from the catalog, not from memory. If the user's
 wording is close but not exact ("correlate professional line"), say which
 article you matched it to.
 
-**Address types** are exactly `Customer`, `GOM Partner`, `Order Process Center`
-or `Other Address`. Nothing else.
+**Address types are enum names, not labels.** `Customer`, `GOMPartner`,
+`HomCenter`, `Other`. GPC's own UI shows "GOM Partner" and "Order Process
+Center", but those strings in a file make .NET refuse the whole document and
+GPC report "This file has no Order-Part". This one has already cost a release.
 
 ## What to flag rather than silently fix
 

@@ -11,19 +11,24 @@
  * So the order comes from the declarations, and this checks our output against
  * them before a person has to find out from GPC.
  */
-import { CHILD_CLASS, MEMBER_ORDER } from './memberOrder.ts'
+import { CHILD_CLASS, ENUM_VALUES, MEMBER_ORDER } from './memberOrder.ts'
 
 export interface OrderViolation {
   /** Element path, e.g. `OrderData/AccountDetailsData`. */
   path: string
-  kind: 'unknown-member' | 'out-of-order'
+  kind: 'unknown-member' | 'out-of-order' | 'bad-enum'
   element: string
   /** For `out-of-order`: the element it should have come before. */
   before?: string
+  /** For `bad-enum`: the offending text and what the enum accepts. */
+  value?: string
+  allowed?: readonly string[]
 }
 
 interface Node {
   name: string
+  /** Text content, when the element holds a simple value. */
+  text?: string
   /** `xsi:type`, when the element declares which subclass it really is. */
   xsiType: string | null
   children: Node[]
@@ -36,12 +41,17 @@ interface Node {
 function parseTree(xml: string): Node | null {
   const root: Node = { name: '#document', xsiType: null, children: [] }
   const stack: Node[] = [root]
+  let lastEnd = 0
   const re = /<(\/?)([A-Za-z_][\w.-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g
   let m: RegExpExecArray | null
   while ((m = re.exec(xml))) {
     const [, close, name, attributes, selfClosing] = m
     if (close) {
-      if (stack.length > 1) stack.pop()
+      const finished = stack.length > 1 ? stack.pop() : null
+      if (finished && finished.children.length === 0) {
+        finished.text = xml.slice(lastEnd, m.index)
+      }
+      lastEnd = re.lastIndex
       continue
     }
     const node: Node = {
@@ -50,7 +60,7 @@ function parseTree(xml: string): Node | null {
       children: [],
     }
     stack[stack.length - 1].children.push(node)
-    if (!selfClosing) stack.push(node)
+    if (!selfClosing) { stack.push(node); lastEnd = re.lastIndex }
   }
   return root.children[0] ?? null
 }
@@ -80,6 +90,18 @@ export function validateOrderXml(xml: string): OrderViolation[] {
         highest = index
         highestName = child.name
       }
+      // An enum travels as its member name. A display label here is an
+      // "Instance validation error" in .NET and the whole file fails to read —
+      // which is not obvious from looking at the XML, since the text is a
+      // perfectly reasonable-looking string.
+      const allowed = ENUM_VALUES[`${className}.${child.name}`]
+      if (allowed && child.text !== undefined) {
+        const text = child.text.trim()
+        if (text !== '' && !allowed.includes(text)) {
+          violations.push({ path, kind: 'bad-enum', element: child.name, value: text, allowed })
+        }
+      }
+
       const declared = kids[child.name]
       if (!declared) continue
       const childPath = `${path}/${child.name}`
@@ -113,7 +135,9 @@ export function describeViolations(violations: OrderViolation[]): string {
     .map((v) =>
       v.kind === 'unknown-member'
         ? `${v.path}: <${v.element}> names no member of the class`
-        : `${v.path}: <${v.element}> comes after <${v.before}>, which the declaration puts later`
+        : v.kind === 'bad-enum'
+          ? `${v.path}: <${v.element}> is ${JSON.stringify(v.value)}, which is not a value of its enum — it accepts ${v.allowed?.join(', ')}`
+          : `${v.path}: <${v.element}> comes after <${v.before}>, which the declaration puts later`
     )
     .join('\n')
 }

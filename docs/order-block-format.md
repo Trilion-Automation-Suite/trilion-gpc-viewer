@@ -72,9 +72,14 @@ generator never breaks an older viewer.
   },
 
   "administration": {                  // OrderAdministration
-    // Exactly one of: Customer | GOM Partner | Order Process Center | Other
-    // Address. The viewer copies the string through verbatim, so anything else
-    // reaches GPC as-is and is not understood; it warns on an unknown value.
+    // AddressType is a C# enum and travels as its member NAME, exactly one of:
+    //   Customer | GOMPartner | HomCenter | Other
+    // These are not the labels GPC's own UI shows ("GOM Partner", "Order
+    // Process Center", "Other Address"). Sending a label makes .NET refuse the
+    // whole document — "Instance validation error: 'GOM Partner' is not a
+    // valid value for AddressType" — and GPC reports that as "This file has no
+    // Order-Part". The viewer translates the known labels and warns; do not
+    // rely on it.
     "invoiceAddressType": "Customer",
     "invoiceAccountNumber": "…", "invoiceCompanyName": "…", "invoiceCompanyNameTwo": "…",
     "invoiceDepartment": "…", "invoiceDepartmentTwo": "…",
@@ -83,7 +88,7 @@ generator never breaks an older viewer.
     "invoiceZip": "…", "invoiceCountry": "…",
     "invoicePaymentTerm": "90 days without deduction", "invoiceNewCustomer": false,
 
-    "shippingAddressType": "Customer",   // same four values
+    "shippingAddressType": "Customer",   // same four enum names
     "shippingAccountNumber": "…", "shippingCompanyName": "…", "shippingCompanyNameTwo": "…",
     "shippingDepartment": "…", "shippingDepartmentTwo": "…", "shippingContactPerson": "…",
     "shippingStreet": "…", "shippingStreetTwo": "…", "shippingStreetThree": "…",

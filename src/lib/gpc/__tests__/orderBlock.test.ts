@@ -326,27 +326,49 @@ describe('applying a block', () => {
   })
 })
 
-describe('values GPC has to recognise', () => {
-  it('warns about an address type the configurator does not know', () => {
+describe('AddressType is an enum, not a label', () => {
+  /**
+   * GPC refused a real order with: Instance validation error: 'GOM Partner'
+   * is not a valid value for AddressType. The enum's members are Customer,
+   * GOMPartner, HomCenter, Other; "GOM Partner" is only what the UI shows.
+   */
+  it('takes the enum values as they are', () => {
+    const { pdb } = build()
+    for (const value of ['Customer', 'GOMPartner', 'HomCenter', 'Other']) {
+      const plan = planOrderBlock(
+        { ...BLOCK, administration: { shippingAddressType: value }, items: [] },
+        pdb
+      )
+      expect(plan.warnings.join(' ')).not.toMatch(/AddressType|label/)
+    }
+  })
+
+  it('rewrites a label, because blocks carrying one are already out there', () => {
+    const { pdb } = build()
+    const block: OrderBlock = { ...BLOCK, administration: { invoiceAddressType: 'GOM Partner' }, items: [] }
+    const plan = planOrderBlock(block, pdb)
+    expect(plan.warnings.join(' ')).toMatch(/is a label; written as GOMPartner/)
+    // The plan is what gets applied, so the correction has to land on it.
+    expect(plan.block.administration?.invoiceAddressType).toBe('GOMPartner')
+  })
+
+  it('rewrites the label the spec itself got wrong', () => {
     const { pdb } = build()
     const plan = planOrderBlock(
       { ...BLOCK, administration: { invoiceAddressType: 'GPC Partner' }, items: [] },
       pdb
     )
-    // Copied through verbatim, so an invented value reaches GPC as-is.
-    expect(plan.warnings.join(' ')).toMatch(/invoiceAddressType is "GPC Partner", which GPC does not know/)
-    expect(plan.warnings.join(' ')).toContain('GOM Partner')
+    expect(plan.block.administration?.invoiceAddressType).toBe('GOMPartner')
   })
 
-  it('accepts the four it does know', () => {
+  it('reports one it cannot translate', () => {
     const { pdb } = build()
-    for (const value of ['Customer', 'GOM Partner', 'Order Process Center', 'Other Address']) {
-      const plan = planOrderBlock(
-        { ...BLOCK, administration: { shippingAddressType: value }, items: [] },
-        pdb
-      )
-      expect(plan.warnings.join(' ')).not.toMatch(/does not know/)
-    }
+    const plan = planOrderBlock(
+      { ...BLOCK, administration: { invoiceAddressType: 'Somewhere Else' }, items: [] },
+      pdb
+    )
+    expect(plan.warnings.join(' ')).toMatch(/not a value of GPC's AddressType/)
+    expect(plan.warnings.join(' ')).toContain('GOMPartner')
   })
 })
 

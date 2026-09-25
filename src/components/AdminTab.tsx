@@ -9,7 +9,23 @@ interface AdminTabProps {
   onChange?: (patch: Partial<OrderAdministration>) => void
 }
 
-const ADDRESS_TYPES = ['Customer', 'GOM Partner', 'Order Process Center', 'Other Address'] as const
+/**
+ * `AddressType` is a C# enum, and XmlSerializer writes the member *name*. The
+ * labels here are for reading; the values are what goes in the file. Writing a
+ * label — "GOM Partner" where the enum says `GOMPartner` — makes GPC refuse
+ * the whole order with "Instance validation error".
+ */
+const ADDRESS_TYPES = [
+  { value: 'Customer', label: 'Customer' },
+  { value: 'GOMPartner', label: 'GOM Partner' },
+  { value: 'HomCenter', label: 'Order Process Center' },
+  { value: 'Other', label: 'Other Address' },
+] as const
+
+/** The stored value as a person should read it. */
+function addressTypeLabel(value: string): string {
+  return ADDRESS_TYPES.find((t) => t.value === value)?.label ?? value
+}
 
 function formatAddress(street: string, streetTwo: string, streetThree: string, poBox: string, city: string, state: string, zip: string, country: string): string {
   return [
@@ -92,7 +108,7 @@ export function AdminTab({ admin, isEditing, onChange }: AdminTabProps) {
       <InfoGrid
         title="Invoice"
         fields={[
-          { label: 'Address Type', value: admin.invoiceAddressType },
+          { label: 'Address Type', value: addressTypeLabel(admin.invoiceAddressType) },
           { label: 'Account Number', value: admin.invoiceAccountNumber },
           { label: 'Company', value: admin.invoiceCompanyName },
           { label: 'Company 2', value: admin.invoiceCompanyNameTwo },
@@ -106,7 +122,7 @@ export function AdminTab({ admin, isEditing, onChange }: AdminTabProps) {
       <InfoGrid
         title="Shipping"
         fields={[
-          { label: 'Address Type', value: admin.shippingAddressType },
+          { label: 'Address Type', value: addressTypeLabel(admin.shippingAddressType) },
           { label: 'Account Number', value: admin.shippingAccountNumber },
           { label: 'Company', value: admin.shippingCompanyName },
           { label: 'Company 2', value: admin.shippingCompanyNameTwo },

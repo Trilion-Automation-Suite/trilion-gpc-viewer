@@ -19,16 +19,21 @@ import { findArticle } from './addItem.ts'
 import { licenseOptions } from './licenses.ts'
 import type { LicenseOption } from './licenses.ts'
 import { MINIMUM_CONTRACT_MONTHS } from './contractTerm.ts'
+import { ENUM_VALUES } from './memberOrder.ts'
 
 /**
- * The only values GPC accepts for an address type.
- *
- * `applyOrderBlockFields` copies these strings through verbatim — they are
- * free text in the file — so a generator that invents one produces an order
- * the configurator cannot read back. Checked here rather than trusted, because
- * the two sides of this format are written by different people.
+ * `AddressType` is a C# enum and travels as its member name, so this is not a
+ * matter of taste: a label reaching the file makes .NET refuse the whole
+ * document with "Instance validation error", and the viewer's own spec used to
+ * name the labels. Blocks written against that are still out there, so a label
+ * is translated rather than rejected — tolerant about what we read.
  */
-const ADDRESS_TYPES = ['Customer', 'GOM Partner', 'Order Process Center', 'Other Address']
+const ADDRESS_TYPE_LABELS: Record<string, string> = {
+  'GOM Partner': 'GOMPartner',
+  'Order Process Center': 'HomCenter',
+  'Other Address': 'Other',
+  'GPC Partner': 'GOMPartner',
+}
 
 const BEGIN = '-----BEGIN GPC ORDER-----'
 const END = '-----END GPC ORDER-----'
@@ -298,11 +303,20 @@ export function planOrderBlock(
       `Prices will be computed in ${orderCurrency}. Change the order's currency first if that is wrong.`
     )
   }
+  const addressTypes = ENUM_VALUES['OrderAdministration.InvoiceAddressType'] ?? []
   for (const field of ['invoiceAddressType', 'shippingAddressType'] as const) {
     const value = block.administration?.[field]
-    if (typeof value === 'string' && value !== '' && !ADDRESS_TYPES.includes(value)) {
+    if (typeof value !== 'string' || value === '') continue
+    if (addressTypes.includes(value)) continue
+    const translated = ADDRESS_TYPE_LABELS[value]
+    if (translated) {
+      // Rewritten in place: the plan is what gets applied, so the corrected
+      // value has to be the one that lands on the order.
+      ;(block.administration as Record<string, string>)[field] = translated
+      warnings.push(`${field} ${JSON.stringify(value)} is a label; written as ${translated}, which is what GPC stores.`)
+    } else {
       warnings.push(
-        `${field} is ${JSON.stringify(value)}, which GPC does not know. It accepts ${ADDRESS_TYPES.join(', ')}.`
+        `${field} is ${JSON.stringify(value)}, which is not a value of GPC's AddressType. It accepts ${addressTypes.join(', ')}.`
       )
     }
   }

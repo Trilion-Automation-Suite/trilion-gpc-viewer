@@ -23,7 +23,7 @@ export type EditField =
       value: string
       onChange: (v: string) => void
       type: 'select'
-      options: readonly string[]
+      options: readonly (string | { value: string; label: string })[]
     }
 
 interface EditSectionProps {
@@ -59,9 +59,13 @@ export function EditSection({ title, fields }: EditSectionProps) {
                 onChange={(e) => f.onChange(e.target.value)}
               >
                 {f.value === '' && <option value="" disabled />}
-                {f.options.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
+                {f.options.map((opt) => {
+                  // An enum's stored value is not always what a person should
+                  // read: GPC stores `GOMPartner` and shows "GOM Partner".
+                  const value = typeof opt === 'string' ? opt : opt.value
+                  const label = typeof opt === 'string' ? opt : opt.label
+                  return <option key={value} value={value}>{label}</option>
+                })}
               </select>
             </div>
           ) : (
