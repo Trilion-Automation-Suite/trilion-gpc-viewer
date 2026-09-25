@@ -548,9 +548,13 @@ function ItemRow({
       </tr>
       {expanded && (
         <>
-          {(item.userZeissId !== undefined || item.userName !== undefined) && (
-            <UserFieldsRow item={item} isEditing={isEditing} onLicenseUserChange={onLicenseUserChange} colSpan={colSpan} />
-          )}
+          {/*
+            * UserFieldsRow decides for itself: a line shows these when the
+            * catalog asks something about it, not only when an answer is
+            * already on file. Gating here on an existing answer is what kept
+            * the dongle field off a freshly pasted calibration panel.
+            */}
+          <UserFieldsRow item={item} isEditing={isEditing} onLicenseUserChange={onLicenseUserChange} colSpan={colSpan} />
           {hasSma && (
             <SmaDetailPanel
               sma={item.sma!}
