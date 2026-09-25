@@ -269,7 +269,12 @@ function resolveArticle(
  * product database usually still resolves, but its prices and SAP numbers come
  * from that one, so the operator is told.
  */
-export function planOrderBlock(block: OrderBlock, pdb: GpcContainer, openCatalog?: string): OrderBlockPlan {
+export function planOrderBlock(
+  block: OrderBlock,
+  pdb: GpcContainer,
+  openCatalog?: string,
+  orderCurrency?: string
+): OrderBlockPlan {
   const config = readPdbConfig(pdb)
   const bySap = articlesBySap(config)
   const licences = licenseOptions(config)
@@ -282,6 +287,16 @@ export function planOrderBlock(block: OrderBlock, pdb: GpcContainer, openCatalog
   }
   if (block.priceList) {
     warnings.push(`Price list: ${block.priceList}`)
+  }
+  // Every price is computed at the order's exchange rate, and switching an
+  // order's currency means selecting a row from the catalog's CurrenciesData —
+  // which the viewer does not yet do from a block. Saying so is the least it
+  // can do: an order priced in the wrong currency looks entirely normal.
+  if (block.currency && orderCurrency && block.currency !== orderCurrency) {
+    warnings.push(
+      `The block is for ${block.currency}, but this order is in ${orderCurrency}. ` +
+      `Prices will be computed in ${orderCurrency}. Change the order's currency first if that is wrong.`
+    )
   }
   for (const field of ['invoiceAddressType', 'shippingAddressType'] as const) {
     const value = block.administration?.[field]

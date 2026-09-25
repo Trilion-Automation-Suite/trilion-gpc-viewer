@@ -435,3 +435,18 @@ describe('the block decides the price list', () => {
     expect(report.failed[0].problem).toMatch(/no price list to price against/)
   })
 })
+
+describe('currency', () => {
+  it('warns when the block and the order disagree', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock({ ...BLOCK, currency: 'USD', items: [] }, pdb, undefined, 'EUR')
+    // Silently pricing a USD order in EUR produces a file that looks right.
+    expect(plan.warnings.join(' ')).toMatch(/block is for USD, but this order is in EUR/)
+  })
+
+  it('says nothing when they agree', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock({ ...BLOCK, currency: 'EUR', items: [] }, pdb, undefined, 'EUR')
+    expect(plan.warnings.join(' ')).not.toMatch(/block is for/)
+  })
+})

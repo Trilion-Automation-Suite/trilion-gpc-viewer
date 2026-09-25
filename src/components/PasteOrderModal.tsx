@@ -39,11 +39,11 @@ export function PasteOrderModal({
   const { plan, error } = useMemo(() => {
     if (!text.trim() || !pdb) return { plan: null, error: null }
     try {
-      return { plan: planOrderBlock(decodeOrderBlock(text), pdb, openCatalog), error: null }
+      return { plan: planOrderBlock(decodeOrderBlock(text), pdb, openCatalog, order.currency), error: null }
     } catch (err) {
       return { plan: null, error: err instanceof Error ? err.message : String(err) }
     }
-  }, [text, pdb, openCatalog])
+  }, [text, pdb, openCatalog, order.currency])
 
   const changes = useMemo(() => (plan ? fieldChanges(order, plan) : []), [order, plan])
   const unresolved = plan?.items.filter((i) => !i.resolved) ?? []
