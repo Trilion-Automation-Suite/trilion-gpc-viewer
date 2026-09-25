@@ -3,6 +3,9 @@ import { createBlankOrderXml } from '../../createBlankOrder.js'
 import { parseOrder } from '../../parseOrder.js'
 import { currencyRow, readPdbConfig } from '../blankOrder.ts'
 import { catalogContainer } from '../catalogContainer.ts'
+import { catalogBlankOrder } from '../../newOrderXml.ts'
+import { METHOD_DEFLATE } from '../container.ts'
+import type { GpcContainer } from '../container.ts'
 import { patchOrderXml } from '../../patchOrder.js'
 import { describeViolations, validateOrderXml } from '../validateOrder.ts'
 import { MEMBER_ORDER } from '../memberOrder.ts'
@@ -207,5 +210,60 @@ describe('the currency an order is quoted in', () => {
     // Newest by ValidFrom, which is .NET ticks as a plain long — not a date.
     expect(value('ExchangeRate')).toBe('1.15')
     expect(value('ValidFrom')).toBe('639131976000000000')
+  })
+})
+
+describe('what counts as a blank order to start from', () => {
+  const PACKAGE = (orderXml: string): GpcContainer => ({
+    entries: [{ name: 'order.xml', data: new TextEncoder().encode(orderXml), method: METHOD_DEFLATE }],
+    dosTime: 0,
+    dosDate: 0,
+  })
+
+  const BLANK = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<OrderData>',
+    '  <DependentListsData />',
+    '  <FreeListArticlesData />',
+    '  <AccountDetailsData>',
+    '    <IsDistributor>false</IsDistributor>',
+    '  </AccountDetailsData>',
+    '  <PriceList>Partner</PriceList>',
+    '</OrderData>',
+  ].join('\r\n')
+
+  it('accepts a catalog\'s own blank order', () => {
+    expect(catalogBlankOrder(PACKAGE(BLANK))).toContain('<PriceList>Partner</PriceList>')
+  })
+
+  it('refuses one that carries line items', () => {
+    // loadPdbFile takes a .gconfiguration as a source of config.xml, which is
+    // legitimate — but it stores the whole package. Using that order.xml as
+    // the template made every new order a copy of somebody else's.
+    const withItems = BLANK.replace(
+      '  <FreeListArticlesData />',
+      '  <FreeListArticlesData>\r\n    <FreeListScreenData>\r\n      <No>1</No>\r\n    </FreeListScreenData>\r\n  </FreeListArticlesData>'
+    )
+    expect(catalogBlankOrder(PACKAGE(withItems))).toBeNull()
+  })
+
+  it('refuses one that names a customer', () => {
+    const withCustomer = BLANK.replace(
+      '    <IsDistributor>false</IsDistributor>',
+      '    <CompanyName>Zimmer Biomet</CompanyName>\r\n    <IsDistributor>false</IsDistributor>'
+    )
+    expect(catalogBlankOrder(PACKAGE(withCustomer))).toBeNull()
+  })
+
+  it('is not fooled by an empty CompanyName element', () => {
+    const empty = BLANK.replace(
+      '    <IsDistributor>false</IsDistributor>',
+      '    <CompanyName />\r\n    <IsDistributor>false</IsDistributor>'
+    )
+    expect(catalogBlankOrder(PACKAGE(empty))).not.toBeNull()
+  })
+
+  it('refuses a package with no order at all', () => {
+    expect(catalogBlankOrder({ entries: [], dosTime: 0, dosDate: 0 })).toBeNull()
   })
 })

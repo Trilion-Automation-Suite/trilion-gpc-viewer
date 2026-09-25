@@ -62,6 +62,17 @@ const TRILION_DISTRIBUTOR_ID = '2104995'
 const HOUSE_CURRENCY_ISO = 'USD'
 
 /**
+ * The house currency on the hand-written template, for the catalogs that ship
+ * no blank order of their own — and for a package that turned out not to be a
+ * catalog at all.
+ */
+function applyFallbackCurrency(xml: string, pdb: GpcContainer | null): string {
+  const row = houseCurrency(pdb)
+  if (!row) return xml
+  return startOrderFromCatalogBlank(xml, { catalog: '', currency: row })
+}
+
+/**
  * The catalog's own row for the house currency, or undefined when it has none
  * — in which case the blank order keeps whatever currency it shipped with,
  * which is better than an order with no currency at all.
@@ -215,7 +226,7 @@ export async function createNewOrder(
         // Account tab still sets it for the orders where it belongs.
         root: { Distributor: TRILION_DISTRIBUTOR_ID },
       })
-    : withSourceFileName(createBlankOrderXml(), catalog)
+    : withSourceFileName(applyFallbackCurrency(createBlankOrderXml(), source), catalog)
   const order = parseOrder(orderXml)
 
   const licenseCatalog = pdb

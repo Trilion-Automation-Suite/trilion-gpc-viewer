@@ -19,10 +19,33 @@ import { parseOrder } from './parseOrder.js'
 import { patchOrderXml } from './patchOrder.js'
 import type { OrderSummary } from '../types/order.js'
 
-/** The blank order a catalog carries, or null for one old enough to lack it. */
+/**
+ * A configuration item, by any of the four names the four lists use.
+ * Present at all and the document is somebody's order, not a template.
+ */
+const SCREEN_DATA = /<(?:DependentListScreenData|FreeListScreenData|FreeArticlesScreenData|SupportScreenData)[\s>/]/
+
+/**
+ * The blank order a catalog carries, or null when there is not one to have.
+ *
+ * Null covers two cases, and the second is the one that bites. A catalog older
+ * than PDB276 ships no `order.xml` at all. And a package cached as a catalog
+ * may not be a catalog: `loadPdbFile` accepts a `.gconfiguration` as a source
+ * of `config.xml`, which is legitimate — an order embeds the same catalog it
+ * was built from — but it stores the whole package, `order.xml` included. Use
+ * that as the template and every new order starts life as a copy of somebody
+ * else's: their line items, their customer, their order number.
+ *
+ * So a document only counts as a template when it is actually blank.
+ */
 export function catalogBlankOrder(pdb: GpcContainer): string | null {
   const entry = pdb.entries.find((e) => e.name === 'order.xml')
-  return entry ? new TextDecoder('utf-8').decode(entry.data) : null
+  if (!entry) return null
+  const xml = new TextDecoder('utf-8').decode(entry.data)
+  if (SCREEN_DATA.test(xml)) return null
+  // A blank order names no customer. One that does was somebody's.
+  if (/<CompanyName>[^<]/.test(xml)) return null
+  return xml
 }
 
 /**
