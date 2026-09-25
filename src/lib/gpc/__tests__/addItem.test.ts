@@ -9,6 +9,11 @@ import type { GpcContainer } from '../container.ts'
  * A miniature catalog with the two shapes that matter: a FreeList item matched
  * by filter tag, and a Supportextension item whose filter shares nothing with
  * the article tag that belongs to it.
+ *
+ * The SMA_EXT list is here because a real catalog always has one — it is where
+ * the agreements live, and membership of it is what distinguishes an extension
+ * from the first-year SMA included with a system, which carries the same
+ * `<software-support>` tag and is an ordinary article.
  */
 const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
 <AdministrationData>
@@ -26,6 +31,25 @@ const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
       </ConfigurationItem>
     </ConfigurationItems>
   </ConfigurationItemsData>
+  <DependentListsData>
+    <DependentLists>
+      <DependentList>
+        <DependentListName>SMA_EXT</DependentListName>
+        <Sections>
+          <Section>
+            <LongName>Software Maintenance Agreement for Sensor Drivers</LongName>
+            <Articles>
+              <SectionArticle>
+                <LongName>EXT SMA for Sensor Driver</LongName>
+                <Step>1</Step>
+                <DefaultAmount>0</DefaultAmount>
+              </SectionArticle>
+            </Articles>
+          </Section>
+        </Sections>
+      </DependentList>
+    </DependentLists>
+  </DependentListsData>
   <RoundingRules>
     <RoundingRule><Rule>1 - commercial Rounding</Rule><Condition>MSRP</Condition><CurrencyIso>EUR</CurrencyIso><MPG>*</MPG><RangeFrom>0</RangeFrom><RangeTo>79228162514264337593543950335</RangeTo><RoundTo>1</RoundTo></RoundingRule>
     <RoundingRule><Rule>1 - commercial Rounding</Rule><Condition>DP</Condition><CurrencyIso>EUR</CurrencyIso><MPG>*</MPG><RangeFrom>0</RangeFrom><RangeTo>79228162514264337593543950335</RangeTo><RoundTo>1</RoundTo></RoundingRule>

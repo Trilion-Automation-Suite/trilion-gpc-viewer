@@ -190,6 +190,15 @@ export interface ConfigItem {
   question1?: string
   question2?: string
   question3?: string
+  /**
+   * Patterns the answer must match, from the item's Question1/2/3 Formats. An
+   * empty list means any answer will do — GPC's own rule.
+   */
+  question1Formats?: string[]
+  question2Formats?: string[]
+  question3Formats?: string[]
+  /** Reply3, for the rare item that asks a third question. */
+  reply3?: string
   userZeissId?: string     // Reply1 — the answer to Question1
   userName?: string       // Reply2 — the answer to Question2        // license user name
   isNew?: boolean          // true for items created in this session (not from XML)

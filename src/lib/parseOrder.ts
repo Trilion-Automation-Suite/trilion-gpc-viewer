@@ -211,6 +211,18 @@ function applyQuestions(item: ConfigItem, ciEl: Element): void {
   if (q1) item.question1 = q1
   if (q2) item.question2 = q2
   if (q3) item.question3 = q3
+  // The formats an answer must match. GPC will not finalize an order whose
+  // answer fails them, so the viewer needs them to say the same.
+  const formats = (tag: string): string[] =>
+    Array.from(directChild(ciEl, tag)?.children ?? [])
+      .map((c) => c.textContent ?? '')
+      .filter((f) => f.trim() !== '')
+  const f1 = formats('Question1Formats')
+  const f2 = formats('Question2Formats')
+  const f3 = formats('Question3Formats')
+  if (f1.length) item.question1Formats = f1
+  if (f2.length) item.question2Formats = f2
+  if (f3.length) item.question3Formats = f3
 }
 
 function parseDependentItem(el: Element, itemType: 'dependent' | 'sub'): ConfigItem {

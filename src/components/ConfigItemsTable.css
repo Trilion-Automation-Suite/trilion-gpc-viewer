@@ -14,6 +14,32 @@
   min-width: 680px;
   border-collapse: collapse;
   font-size: 0.865rem;
+  /*
+   * Columns are sized from the <colgroup> alone, never from cell content.
+   * Under the default automatic layout the browser measures every cell in the
+   * table — the expanded detail rows included — so opening a line could change
+   * the width of the columns above it and the table appeared to jump.
+   */
+  table-layout: fixed;
+}
+
+.config-table .col-no { width: 68px; }
+.config-table .col-category { width: 15%; }
+.config-table .col-system { width: 16%; }
+.config-table .col-price { width: 11%; }
+.config-table .col-margin { width: 9%; }
+.config-table .col-actions { width: 36px; }
+/* col-name takes what is left, which is where a long name should go. */
+
+/*
+ * Fixed layout wraps rather than widening, so the cells that hold long text
+ * say so themselves instead of relying on the column to grow.
+ */
+.config-table td.item-category,
+.config-table td.item-system-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Sticky header */
@@ -595,4 +621,36 @@
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
+}
+
+/*
+ * A line GPC would refuse to finalize. Same signal the configurator gives, in
+ * the same place: the question is unanswered, or the answer does not match the
+ * format the item demands. Expanding the row shows which.
+ */
+.item-incomplete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: var(--danger, #b3261e);
+  border-radius: 50%;
+  vertical-align: middle;
+  cursor: help;
+}
+
+.field-required {
+  font-weight: 700;
+  color: var(--danger, #b3261e);
+}
+
+.user-field-input--missing {
+  border-color: var(--danger, #b3261e);
+  outline: 1px solid color-mix(in srgb, var(--danger, #b3261e) 30%, transparent);
 }

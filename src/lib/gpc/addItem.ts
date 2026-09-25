@@ -701,9 +701,50 @@ const SOFTWARE_SUPPORT_TAG = '<software-support>'
 /** Support items are typed `Supportextension`, not `Support`. */
 const SUPPORT_ITEM_TYPE = 'Supportextension'
 
-/** True when an article belongs in a support screen rather than a free list. */
+/** True when an article carries the tag that support screens filter on. */
 export function isSupportArticle(article: ElementValue): boolean {
   return (field(article, 'FilterTags') ?? '').includes(SOFTWARE_SUPPORT_TAG)
+}
+
+/**
+ * True when an article is an agreement the operator can actually take out —
+ * that is, an option of the support item's own list.
+ *
+ * The `<software-support>` tag is not enough to tell. It is carried by both
+ * families: the *extension* sold after the first year, and the first-year SMA
+ * *included* with a system, which is its own article and not something a
+ * dongle is renewed against:
+ *
+ *   666031-0000-322  Inc. SMA for Sensor Driver PONTOS Live   SMA (in-sys)
+ *   666031-2000-322  EXT SMA for Sensor Driver PONTOS Live    SMA (Stand-alone / Extension)
+ *
+ * Neither is the MPG a clean test — "SMA (Stand-alone / Extension)" holds
+ * plenty of articles named "Inc. SMA" — and neither is the name, since one
+ * extension is called simply "SMA for Sensor Driver PONTOS Live". Membership
+ * of the list is the thing the catalog actually asserts, so it is what this
+ * asks. 87 of SMA_EXT's 91 options are `666031-2000-*`; the other four are the
+ * licence models and the ongoing-agreement option.
+ */
+export function isSmaExtension(config: ElementValue, articleName: string): boolean {
+  let item: ElementValue
+  try {
+    item = findSupportItem(config)
+  } catch {
+    return false
+  }
+  const listName = plainSupportFilter(item)
+  const lists = sub(section(config, 'DependentListsData'), 'DependentLists')
+  if (!lists) return false
+  for (const member of lists.members) {
+    const list = member.value
+    if (list.kind !== 'element' || field(list, 'DependentListName') !== listName) continue
+    for (const sec of listItems(list, 'Sections')) {
+      for (const entry of listItems(sec, 'Articles')) {
+        if (field(entry, 'LongName') === articleName) return true
+      }
+    }
+  }
+  return false
 }
 
 /**
@@ -995,7 +1036,10 @@ export function addCatalogArticle(
 ): OrderDocument {
   const config = readPdbConfig(pdb)
   const article = findArticle(config, articleName)
-  if (options.list || isSupportArticle(article)) {
+  // Tagged `<software-support>` is not the same as being an agreement. An
+  // included first-year SMA carries that tag and belongs on an ordinary line;
+  // only what the support list offers goes on the support screen.
+  if (options.list || (isSupportArticle(article) && isSmaExtension(config, articleName))) {
     return addSupportArticle(order, pdb, articleName, options)
   }
   // A free list claims the article by tag; anything untagged goes to the

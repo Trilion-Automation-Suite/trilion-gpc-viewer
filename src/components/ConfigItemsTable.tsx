@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentList } from '../types/order.ts'
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import { MINIMUM_CONTRACT_MONTHS, monthOf } from '../lib/gpc/contractTerm.ts'
+import { questionIssues } from '../lib/gpc/questions.ts'
 import type { SmaContractEdit } from '../lib/gpc/sma.ts'
 import './ConfigItemsTable.css'
 
@@ -162,6 +163,8 @@ function UserFieldsRow({
   const label1 = item.question1 ?? 'ZEISS ID / email'
   const label2 = item.question2 ?? 'User name'
   const showSecond = item.question2 !== undefined || item.userName !== undefined
+  const issues = questionIssues(item)
+  const issueFor = (index: 1 | 2) => issues.find((i) => i.index === index)
 
   return (
     <tr className="user-fields-row">
@@ -170,9 +173,12 @@ function UserFieldsRow({
         {isEditing ? (
           <div className="user-fields-inputs">
             <label className="user-field-label">
-              <span className="user-field-question">{label1}</span>
+              <span className="user-field-question">
+                {label1}
+                {issueFor(1) && <span className="field-required" title="GPC needs this before the order can be finalized"> *</span>}
+              </span>
               <input
-                className="user-field-input"
+                className={`user-field-input${issueFor(1) ? ' user-field-input--missing' : ''}`}
                 value={item.userZeissId ?? ''}
                 onChange={e => onLicenseUserChange(item.no, { userZeissId: e.target.value })}
                 aria-label={label1}
@@ -180,9 +186,12 @@ function UserFieldsRow({
             </label>
             {showSecond && (
               <label className="user-field-label">
-                <span className="user-field-question">{label2}</span>
+                <span className="user-field-question">
+                  {label2}
+                  {issueFor(2) && <span className="field-required" title="GPC needs this before the order can be finalized"> *</span>}
+                </span>
                 <input
-                  className="user-field-input"
+                  className={`user-field-input${issueFor(2) ? ' user-field-input--missing' : ''}`}
                   value={item.userName ?? ''}
                   onChange={e => onLicenseUserChange(item.no, { userName: e.target.value })}
                   aria-label={label2}
@@ -499,11 +508,19 @@ function ItemRow({
     .filter(Boolean)
     .join(' ')
 
+  const incomplete = questionIssues(item)
   const hasSma = item.sma !== undefined && (
     item.sma.email || item.sma.userName ||
     item.sma.softwareArticles.length > 0 || item.sma.dependentLists.length > 0
   )
-  const hasDetail = item.sections.length > 0 || item.userZeissId !== undefined || item.userName !== undefined || hasSma
+  const hasDetail =
+    item.sections.length > 0 ||
+    item.userZeissId !== undefined ||
+    item.userName !== undefined ||
+    // A question with no answer yet is the whole reason to open the row.
+    item.question1 !== undefined ||
+    item.question2 !== undefined ||
+    hasSma
   const colSpan = 8  // 7 data cols + 1 delete col
 
   return (
@@ -523,6 +540,25 @@ function ItemRow({
         <td>
           <span className="item-name">
             {item.name || item.label}
+            {/*
+              * GPC marks a line whose questions are unanswered and refuses to
+              * finalize the order, so the viewer says the same thing in the
+              * same place. The rule is GPC's own: a question is required when
+              * its text is non-blank, and the answer must match the item's
+              * formats. Expand the row to answer it.
+              */}
+            {incomplete.length > 0 && (
+              <span
+                className="item-incomplete"
+                role="img"
+                aria-label={`Needs an answer: ${incomplete[0].question}`}
+                title={incomplete
+                  .map(i => i.kind === 'missing' ? i.question : `${i.question} — the answer does not match the expected format`)
+                  .join('\n')}
+              >
+                !
+              </span>
+            )}
             {item.isHidden && <em className="hidden-badge">hidden</em>}
             {hasSma && <em className="sma-badge">SMA</em>}
           </span>
@@ -611,6 +647,22 @@ export function ConfigItemsTable({
   return (
     <div className="config-table-wrapper">
       <table className="config-table" aria-label="Configuration items">
+        {/*
+          * Explicit columns, with table-layout: fixed in the stylesheet.
+          * Without them the browser sizes columns from every cell in the
+          * table — including the detail rows — so expanding a line could
+          * resize the columns above it, which made the whole table jump.
+          */}
+        <colgroup>
+          <col className="col-no" />
+          <col className="col-category" />
+          <col className="col-name" />
+          <col className="col-system" />
+          <col className="col-price" />
+          <col className="col-price" />
+          <col className="col-margin" />
+          <col className="col-actions" />
+        </colgroup>
         <thead>
           <tr>
             <th>Item #</th>
@@ -620,7 +672,7 @@ export function ConfigItemsTable({
             <th className="right">List Price</th>
             <th className="right">Distributor</th>
             <th className="right">Margin</th>
-            <th style={{ width: 32 }} />
+            <th />
           </tr>
         </thead>
         <tbody>
