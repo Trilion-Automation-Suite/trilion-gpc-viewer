@@ -11,6 +11,9 @@
  * empty elements set them to "" instead of null, and made every new order
  * carry about 1.2 kB of placeholders.
  *
+ * `AccountNumber` is deliberately absent: it is the *customer's* number at
+ * GOM, and GPC writes none. The distributor's id goes in `Distributor`.
+ *
  * Defaults:
  *   - Distributor: 2104995 (GOM Partner ID)
  *   - PriceList: Partner
@@ -29,7 +32,6 @@ export function createBlankOrderXml(): string {
   <FreeListArticlesData />
   <SupportArticlesData />
   <AccountDetailsData>
-    <AccountNumber>2104995</AccountNumber>
     <Country>United States of America</Country>
     <IsDistributor>false</IsDistributor>
     <IsNewCustomer>false</IsNewCustomer>

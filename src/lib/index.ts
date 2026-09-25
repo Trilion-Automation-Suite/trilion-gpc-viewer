@@ -175,8 +175,15 @@ export async function createNewOrder(
   const orderXml = blank
     ? startOrderFromCatalogBlank(blank, {
         catalog,
+        // Only the distributor. `AccountDetailsData.AccountNumber` is the
+        // *customer's* number at GOM, and GPC never writes one — not in any
+        // reference file, not in the blank order the catalog ships. Defaulting
+        // it to the distributor's id conflated the two, and since the viewer
+        // derives "GOM Partner" from that field being set, every order came
+        // out flagged as the partner's own — including one for an end
+        // customer pasted straight from a sales order. The checkbox on the
+        // Account tab still sets it for the orders where it belongs.
         root: { Distributor: TRILION_DISTRIBUTOR_ID },
-        apply: (draft) => { draft.account.accountNumber = TRILION_DISTRIBUTOR_ID },
       })
     : withSourceFileName(createBlankOrderXml(), catalog)
   const order = parseOrder(orderXml)

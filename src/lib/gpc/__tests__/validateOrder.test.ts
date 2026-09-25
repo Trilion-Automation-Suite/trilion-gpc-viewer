@@ -139,3 +139,24 @@ describe('a new order starts from the catalog, not a template', () => {
     expect(started).not.toContain('2026-09-18T11:28:10')
   })
 })
+
+describe('a new order is not the partner\'s own account', () => {
+  it('leaves AccountNumber alone, as GPC does', () => {
+    // GPC writes no AccountNumber — not in any reference file, nor in the
+    // blank order a catalog ships. It is the *customer's* number at GOM; the
+    // distributor's id belongs in <Distributor>, which is set separately.
+    const blank = createBlankOrderXml()
+    const order = parseOrder(blank)
+    expect(order.account.accountNumber).toBe('')
+    expect(order.account.isGomPartner).toBe(false)
+  })
+
+  it('still flags one when an account number is present', () => {
+    // The Account tab's checkbox sets the number; the flag follows from it.
+    const withNumber = createBlankOrderXml().replace(
+      '<Country>United States of America</Country>',
+      '<AccountNumber>2104995</AccountNumber>\r\n    <Country>United States of America</Country>'
+    )
+    expect(parseOrder(withNumber).account.isGomPartner).toBe(true)
+  })
+})
