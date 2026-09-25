@@ -9,6 +9,7 @@ import type { GpcEntry } from './gpc/container.ts'
 import { buildContentTypes, buildRels } from './gpc/writeGpcFile.ts'
 import { createBlankOrderXml } from './createBlankOrder.js'
 import { catalogBlankOrder, startOrderFromCatalogBlank } from './newOrderXml.js'
+import { UNTITLED_ORDER } from './orderFileName.ts'
 import { currencyRow, readPdbConfig } from './gpc/blankOrder.ts'
 import type { ElementValue } from './gpc/orderXml.ts'
 import type { GpcContainer } from './gpc/container.ts'
@@ -267,7 +268,7 @@ export async function createNewOrder(
     order,
     gpcVersion: '',
     pdbVersion: readSourceFileName(orderXml),
-    sourceFile: 'New Order.gconfiguration',
+    sourceFile: UNTITLED_ORDER,
     rawOrderXml: orderXml,
     rawDecryptedBuffer: zipBuffer,
     originalItemNos: [],

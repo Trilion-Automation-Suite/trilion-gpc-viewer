@@ -18,6 +18,7 @@ import type { SmaContractEdit } from './lib/gpc/sma.ts'
 import { addLicense, licenseOptionsFromConfig } from './lib/gpc/licenses.ts'
 import { applyOrderBlockFields, applyOrderBlockItems } from './lib/gpc/applyOrderBlock.ts'
 import { catalogOfLink, clearOrderLink, readOrderLink } from './lib/orderLink.ts'
+import { isUntitled, orderFileName } from './lib/orderFileName.ts'
 import type { OrderBlockPlan } from './lib/gpc/orderBlock.ts'
 import type { GpcContainer } from './lib/gpc/container.ts'
 import type { LicenseOption } from './lib/gpc/licenses.ts'
@@ -385,8 +386,22 @@ export function App() {
       const orderXml = new TextDecoder().decode(serializeOrderXml(doc))
       const withFields = applyOrderBlockFields(parseOrder(orderXml), plan)
 
+      // An untitled order takes its name from what the block just told us.
+      // A file opened from disk keeps the name the operator gave it.
+      const renamed = isUntitled(state.result.sourceFile)
+        ? orderFileName(withFields.orderNumber, withFields.account.companyName)
+        : null
+
       setState(prev => (prev.status === 'loaded'
-        ? { ...prev, result: { ...prev.result, rawOrderXml: orderXml, order: withFields } }
+        ? {
+            ...prev,
+            result: {
+              ...prev.result,
+              rawOrderXml: orderXml,
+              order: withFields,
+              ...(renamed ? { sourceFile: renamed } : {}),
+            },
+          }
         : prev))
       setOrder(withFields)
       setIsDirty(true)
