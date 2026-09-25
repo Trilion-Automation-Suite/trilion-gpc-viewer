@@ -14,6 +14,7 @@ import type { OrderDocument } from './orderXml.ts'
 import type { OrderSummary } from '../../types/order.js'
 import { addCatalogArticle, recalculateOrder } from './addItem.ts'
 import { setMember } from './orderXml.ts'
+import { currencyRow, readPdbConfig } from './blankOrder.ts'
 import { addLicense } from './licenses.ts'
 import { addSmaExtension } from './sma.ts'
 import type { OrderBlockPlan } from './orderBlock.ts'
@@ -46,6 +47,18 @@ export function applyOrderBlockItems(
   const priceList = plan.block.priceList
   if (priceList) {
     setMember(order.root, 'OrderData', 'PriceList', { kind: 'text', type: null, value: priceList })
+  }
+
+  // Same reasoning as the price list, and for the same reason it has to happen
+  // first: every Msrp and Dp is computed at the order's exchange rate. The row
+  // comes from the catalog, so the rate and its ValidFrom are GPC's own.
+  const currency = plan.block.currency
+  if (currency) {
+    try {
+      setMember(order.root, 'OrderData', 'Currency', currencyRow(readPdbConfig(pdb), currency))
+    } catch {
+      // The catalog does not carry it; planOrderBlock has already said so.
+    }
   }
 
   for (const entry of plan.items) {

@@ -9,6 +9,9 @@ import type { GpcEntry } from './gpc/container.ts'
 import { buildContentTypes, buildRels } from './gpc/writeGpcFile.ts'
 import { createBlankOrderXml } from './createBlankOrder.js'
 import { catalogBlankOrder, startOrderFromCatalogBlank } from './newOrderXml.js'
+import { currencyRow, readPdbConfig } from './gpc/blankOrder.ts'
+import type { ElementValue } from './gpc/orderXml.ts'
+import type { GpcContainer } from './gpc/container.ts'
 
 /** Mutates article rows in-place with prices from the config.xml price map. */
 function enrichArticlePrices(order: OrderSummary, priceMap: ReturnType<typeof buildArticlePriceMap>): void {
@@ -45,6 +48,31 @@ function relationshipId(): string {
 
 /** Trilion's GOM Partner ID, the one value a new order does not inherit. */
 const TRILION_DISTRIBUTOR_ID = '2104995'
+
+/**
+ * The currency every Trilion order is quoted in.
+ *
+ * A catalog's blank order carries the currency the catalog was built with —
+ * PDB290 ships EUR at an exchange rate of 1.00 — and every price is computed
+ * at that rate. Left alone, a new order is a euro order wearing dollar
+ * intentions. The row comes from the catalog's own CurrenciesData, so the
+ * exchange rate and its ValidFrom are the ones GPC would have picked.
+ */
+const HOUSE_CURRENCY_ISO = 'USD'
+
+/**
+ * The catalog's own row for the house currency, or undefined when it has none
+ * — in which case the blank order keeps whatever currency it shipped with,
+ * which is better than an order with no currency at all.
+ */
+function houseCurrency(pdb: GpcContainer | null): ElementValue | undefined {
+  if (!pdb) return undefined
+  try {
+    return currencyRow(readPdbConfig(pdb), HOUSE_CURRENCY_ISO)
+  } catch {
+    return undefined
+  }
+}
 
 /** `ParametersData/VersionName` — the catalog's own name for itself. */
 function readVersionName(configXml: string): string {
@@ -175,6 +203,7 @@ export async function createNewOrder(
   const orderXml = blank
     ? startOrderFromCatalogBlank(blank, {
         catalog,
+        currency: houseCurrency(source),
         // Only the distributor. `AccountDetailsData.AccountNumber` is the
         // *customer's* number at GOM, and GPC never writes one — not in any
         // reference file, not in the blank order the catalog ships. Defaulting

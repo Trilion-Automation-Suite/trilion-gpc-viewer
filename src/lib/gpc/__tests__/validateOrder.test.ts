@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createBlankOrderXml } from '../../createBlankOrder.js'
 import { parseOrder } from '../../parseOrder.js'
+import { currencyRow, readPdbConfig } from '../blankOrder.ts'
+import { catalogContainer } from '../catalogContainer.ts'
 import { patchOrderXml } from '../../patchOrder.js'
 import { describeViolations, validateOrderXml } from '../validateOrder.ts'
 import { MEMBER_ORDER } from '../memberOrder.ts'
@@ -158,5 +160,52 @@ describe('a new order is not the partner\'s own account', () => {
       '<AccountNumber>2104995</AccountNumber>\r\n    <Country>United States of America</Country>'
     )
     expect(parseOrder(withNumber).account.isGomPartner).toBe(true)
+  })
+})
+
+describe('the currency an order is quoted in', () => {
+  /**
+   * A catalog's blank order carries the currency the catalog was built with.
+   * PDB290 as shipped to this office says EUR at an exchange rate of 1.00, so
+   * every new order was priced in euros while being quoted in dollars — which
+   * looks entirely normal on screen.
+   */
+  it('takes the house currency from the catalog, not the blank order', () => {
+    const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
+<AdministrationData xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <CurrenciesData>
+    <Currencies>
+      <Currency>
+        <Iso>EUR</Iso>
+        <Display>EUR</Display>
+        <Description>Euro</Description>
+        <ExchangeRate>1.00</ExchangeRate>
+        <ValidFrom>639131976000000000</ValidFrom>
+      </Currency>
+      <Currency>
+        <Iso>USD</Iso>
+        <Display>USD</Display>
+        <Description>US Dollar</Description>
+        <ExchangeRate>1.10</ExchangeRate>
+        <ValidFrom>639000000000000000</ValidFrom>
+      </Currency>
+      <Currency>
+        <Iso>USD</Iso>
+        <Display>USD</Display>
+        <Description>US Dollar</Description>
+        <ExchangeRate>1.15</ExchangeRate>
+        <ValidFrom>639131976000000000</ValidFrom>
+      </Currency>
+    </Currencies>
+  </CurrenciesData>
+</AdministrationData>`
+    const row = currencyRow(readPdbConfig(catalogContainer(CONFIG)), 'USD')
+    const value = (name: string) => {
+      const m = row.members.find((x) => x.name === name)
+      return m && m.value.kind === 'text' ? m.value.value : undefined
+    }
+    // Newest by ValidFrom, which is .NET ticks as a plain long — not a date.
+    expect(value('ExchangeRate')).toBe('1.15')
+    expect(value('ValidFrom')).toBe('639131976000000000')
   })
 })

@@ -14,6 +14,7 @@
  */
 import type { GpcContainer } from './gpc/container.ts'
 import { MEMBER_ORDER } from './gpc/memberOrder.ts'
+import type { ElementValue } from './gpc/orderXml.ts'
 import { parseOrder } from './parseOrder.js'
 import { patchOrderXml } from './patchOrder.js'
 import type { OrderSummary } from '../types/order.js'
@@ -65,6 +66,32 @@ function setRootElement(xml: string, tag: string, value: string): string {
   return xml.replace(/^<\/OrderData>/m, `${line}</OrderData>`)
 }
 
+/**
+ * Replaces the order's `<Currency>` block with a row from the catalog.
+ *
+ * A catalog's blank order carries whichever currency the catalog was built
+ * with — PDB290 ships EUR at rate 1.00 — and every price in the order is then
+ * computed at that rate. An order quoted in dollars against a euro rate does
+ * not look wrong on screen, which is what makes it worth setting outright
+ * rather than leaving to be noticed later.
+ *
+ * Text rather than model, so the rest of the document stays exactly as GPC
+ * wrote it.
+ */
+function setCurrency(xml: string, row: ElementValue): string {
+  const eol = xml.includes('\r\n') ? '\r\n' : '\n'
+  const body = row.members
+    .map((m) => {
+      const value = m.value.kind === 'text' ? (m.value.value ?? '') : ''
+      return `    <${m.name}>${value}</${m.name}>`
+    })
+    .join(eol)
+  return xml.replace(
+    /^ {2}<Currency>[\s\S]*?^ {2}<\/Currency>/m,
+    `  <Currency>${eol}${body}${eol}  </Currency>`
+  )
+}
+
 /** What a new order needs that the catalog's blank copy cannot know. */
 export interface NewOrderDefaults {
   /** `SourceFileName` — which catalog this order was started from. */
@@ -77,6 +104,8 @@ export interface NewOrderDefaults {
   root?: Record<string, string>
   /** Applied through the normal save path, so placement is the proven one. */
   apply?: (order: OrderSummary) => void
+  /** The currency row to put on the order, from the catalog's CurrenciesData. */
+  currency?: ElementValue
   now?: Date
 }
 
@@ -88,7 +117,8 @@ export function startOrderFromCatalogBlank(blankXml: string, defaults: NewOrderD
   const now = defaults.now ?? new Date()
   const stamp = dotNetLocalTimestamp(now)
 
-  let xml = setRootElement(blankXml, 'CreationDate', stamp)
+  let xml = defaults.currency ? setCurrency(blankXml, defaults.currency) : blankXml
+  xml = setRootElement(xml, 'CreationDate', stamp)
   xml = setRootElement(xml, 'LastModified', stamp)
   if (defaults.catalog) xml = setRootElement(xml, 'SourceFileName', defaults.catalog)
   for (const [tag, value] of Object.entries(defaults.root ?? {})) {

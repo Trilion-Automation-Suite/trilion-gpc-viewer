@@ -111,7 +111,7 @@ function destinationRow(config: ElementValue, country: string): ElementValue {
  * Confirmed against reference files: orders built from a given PDB all select
  * exactly this row.
  */
-function currencyRow(config: ElementValue, iso: string, validFrom?: string): ElementValue {
+export function currencyRow(config: ElementValue, iso: string, validFrom?: string): ElementValue {
   const rows = children(section(config, 'CurrenciesData'), 'Currencies').filter(
     (r) => field(r, 'Iso') === iso
   )
