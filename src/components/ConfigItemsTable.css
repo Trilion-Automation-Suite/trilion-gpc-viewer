@@ -687,6 +687,22 @@
 }
 
 .sma-upgrade-why {
+  /* The cell before it is right-aligned, so without this the number and the
+   * sentence touch and read as one string. */
+  padding-left: 14px;
   font-size: 0.82em;
+  font-style: italic;
   color: var(--text-muted, #666);
+  white-space: nowrap;
+}
+
+/* Breathing room around every cell of the sub-table, which had none. */
+.sma-sub-table th,
+.sma-sub-table td {
+  padding: 4px 10px;
+}
+
+.sma-sub-table td.right,
+.sma-sub-table th.right {
+  padding-right: 14px;
 }

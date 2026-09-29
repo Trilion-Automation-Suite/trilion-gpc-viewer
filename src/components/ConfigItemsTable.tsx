@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentList } from '../types/order.ts'
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import { MINIMUM_CONTRACT_MONTHS, monthOf } from '../lib/gpc/contractTerm.ts'
@@ -252,6 +252,39 @@ function DongleRowEditor({
   const [adding, setAdding] = useState(false)
   const [query, setQuery] = useState('')
 
+  /*
+   * The term fields are typed into freely and committed when the field is
+   * left. Each commit rebuilds the order document, which is far too much work
+   * to do on every keystroke of a four-character year.
+   */
+  const [monthsDraft, setMonthsDraft] = useState(String(dongle.months))
+  const [endOldDraft, setEndOldDraft] = useState(monthOf(dongle.endOldContract))
+  const [startDraft, setStartDraft] = useState(monthOf(dongle.startNewContract))
+
+  // Adopt whatever the order now says, unless this field is being typed into.
+  useEffect(() => { setMonthsDraft(String(dongle.months)) }, [dongle.months])
+  useEffect(() => { setEndOldDraft(monthOf(dongle.endOldContract)) }, [dongle.endOldContract])
+  useEffect(() => { setStartDraft(monthOf(dongle.startNewContract)) }, [dongle.startNewContract])
+
+  function commitMonths() {
+    const months = parseInt(monthsDraft, 10)
+    if (!Number.isFinite(months) || months < MINIMUM_CONTRACT_MONTHS) {
+      setMonthsDraft(String(dongle.months))   // put back what the order holds
+      return
+    }
+    if (months !== dongle.months) onContractChange(index, { months })
+  }
+
+  function commitMonth(field: 'endOldContract' | 'startNewContract', draft: string, current: string) {
+    if (!/^\d{4}-\d{2}$/.test(draft)) {
+      setEndOldDraft(monthOf(dongle.endOldContract))
+      setStartDraft(monthOf(dongle.startNewContract))
+      return
+    }
+    if (draft === monthOf(current)) return
+    onContractChange(index, { [field]: `${draft}-01` })
+  }
+
   const matches = query.trim().length < 2
     ? []
     : smaCatalog.filter(name => name.toLowerCase().includes(query.toLowerCase())).slice(0, 25)
@@ -275,8 +308,13 @@ function DongleRowEditor({
               <input
                 className="sma-input"
                 type="month"
-                value={monthOf(dongle.endOldContract)}
-                onChange={e => e.target.value && onContractChange(index, { endOldContract: `${e.target.value}-01` })}
+                /* Safari has no month picker and falls back to a text box, so
+                 * the shape has to be stated rather than assumed. */
+                placeholder="YYYY-MM"
+                pattern="\\d{4}-\\d{2}"
+                value={endOldDraft}
+                onChange={e => setEndOldDraft(e.target.value)}
+                onBlur={() => commitMonth('endOldContract', endOldDraft, dongle.endOldContract)}
               />
             </label>
             <label className="sma-field">
@@ -284,8 +322,11 @@ function DongleRowEditor({
               <input
                 className="sma-input"
                 type="month"
-                value={monthOf(dongle.startNewContract)}
-                onChange={e => e.target.value && onContractChange(index, { startNewContract: `${e.target.value}-01` })}
+                placeholder="YYYY-MM"
+                pattern="\\d{4}-\\d{2}"
+                value={startDraft}
+                onChange={e => setStartDraft(e.target.value)}
+                onBlur={() => commitMonth('startNewContract', startDraft, dongle.startNewContract)}
               />
             </label>
             <label className="sma-field">
@@ -295,11 +336,17 @@ function DongleRowEditor({
                 type="number"
                 min={MINIMUM_CONTRACT_MONTHS}
                 step={1}
-                value={dongle.months}
-                onChange={e => {
-                  const months = parseInt(e.target.value, 10)
-                  if (months >= MINIMUM_CONTRACT_MONTHS) onContractChange(index, { months })
-                }}
+                /*
+                 * Typed freely and committed on blur. Committing per keystroke
+                 * made 12 unreachable — "1" is below the minimum, so it was
+                 * rejected before the "2" arrived — and every accepted keystroke
+                 * reparsed and reserialised the whole order, which is what made
+                 * the arrows crawl.
+                 */
+                value={monthsDraft}
+                onChange={e => setMonthsDraft(e.target.value)}
+                onBlur={commitMonths}
+                onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
               />
             </label>
             <div className="sma-field">
@@ -494,6 +541,8 @@ function SmaDetailPanel({
                     <td className="sma-mono">{u.dongleId}</td>
                     <td className="right"><PriceCell value={u.msrp} dec={dec} /></td>
                     <td className="right"><PriceCell value={u.dp} dec={dec} /></td>
+                    {/* Sits under CONTRACT END onward; the reason belongs with
+                      * the dates it is derived from, not welded to the price. */}
                     <td colSpan={isEditing ? 4 : 3} className="sma-upgrade-why">
                       {u.missingMonths} months of lapsed cover
                     </td>
