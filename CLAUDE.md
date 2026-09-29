@@ -134,6 +134,25 @@ once per catalog (`getConfig`, `upgradeCatalog`, the engine catalog) and cached
 by key in `App.tsx`; per-row results are memoised on the row object. Before
 adding a `get*()` call to JSX, check it is a cache hit.
 
+## Converting to a newer catalog (Q2507067, PDB283 → 290)
+
+- **Three faults stacked, each hidden by the one before.** The log named an
+  enum ('Unselected' AmountMode); behind it a sub-configuration still had the
+  old catalog's section count (the Q17 crash, one level down); behind that the
+  picks had not been re-run under the new rules, so licences stayed 2025 and
+  totals stale. GPC's own import of the same order is the oracle: diff every
+  selected option, every total, the element paths and value shapes.
+- **A converted order goes through the rules engine** (`applyTargetRules`),
+  because GPC's import does. What the rules changed is in the report.
+- **`validateOrderXml` runs before a converted file is written.** Its member
+  table comes from decompiled GPC 2.9.12 and lags the GPC that writes current
+  catalogs (2.9.19's Article has `<Responsible>`); a member it does not know is
+  accepted only when the target catalog has it on the same element.
+- **A test asserted the bug** (`<AmountMode>Unselected</AmountMode>`). Enum
+  values in an assertion come from `ENUM_VALUES`, never from the code's output.
+- A converted `config.xml` is the target catalog copied byte for byte; GPC's
+  import re-serializes it with its `##Partner` cache rows, which is not needed.
+
 ## Display-only data
 
 Some things GPC recomputes on open and never stores — the lapsed-cover upgrade
