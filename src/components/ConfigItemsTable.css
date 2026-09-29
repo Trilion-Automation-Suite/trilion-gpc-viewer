@@ -544,6 +544,13 @@
   gap: 3px;
 }
 
+.sma-field select.sma-input {
+  /* Native selects ignore some of the input styling; match the boxes beside
+   * them so the row does not look like two different controls. */
+  height: 30px;
+  padding: 4px 6px;
+}
+
 .sma-input {
   min-width: 150px;
   padding: 5px 7px;
@@ -686,10 +693,13 @@
   color: var(--text-muted, #666);
 }
 
-.sma-upgrade-why {
-  /* The cell before it is right-aligned, so without this the number and the
-   * sentence touch and read as one string. */
-  padding-left: 14px;
+.sma-sub-table td.sma-upgrade-why {
+  /*
+   * The cell before it is right-aligned, so without this the number and the
+   * sentence touch and read as one string. Qualified with the table because
+   * the generic cell padding below is more specific and would otherwise win.
+   */
+  padding-left: 18px;
   font-size: 0.82em;
   font-style: italic;
   color: var(--text-muted, #666);

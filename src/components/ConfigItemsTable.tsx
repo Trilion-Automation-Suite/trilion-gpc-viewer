@@ -305,18 +305,39 @@ function DongleRowEditor({
             </label>
             <label className="sma-field">
               <span className="sma-info-label">Current agreement ends after</span>
-              <input
+              {/*
+                * GPC offers this as a dropdown whose options include "older" —
+                * the lapse predates anything the catalogue prices — alongside
+                * real dates. The two are alternatives, so the choice is made
+                * here and the date box only appears when a date is what is
+                * meant. "older" has to survive the save, or the file will not
+                * reopen in GPC the way it was built.
+                */}
+              <select
                 className="sma-input"
-                type="month"
-                /* Safari has no month picker and falls back to a text box, so
-                 * the shape has to be stated rather than assumed. */
-                placeholder="YYYY-MM"
-                pattern="\\d{4}-\\d{2}"
-                value={endOldDraft}
-                onChange={e => setEndOldDraft(e.target.value)}
-                onBlur={() => commitMonth('endOldContract', endOldDraft, dongle.endOldContract)}
-              />
+                value={dongle.isOlderSelected ? 'older' : 'date'}
+                onChange={e => onContractChange(index, e.target.value === 'older'
+                  ? { isOlderSelected: true }
+                  : { isOlderSelected: false, endOldContract: endOldDraft ? `${endOldDraft}-01` : undefined })}
+              >
+                <option value="date">a date</option>
+                <option value="older">older</option>
+              </select>
             </label>
+            {!dongle.isOlderSelected && (
+              <label className="sma-field">
+                <span className="sma-info-label">…which is</span>
+                <input
+                  className="sma-input"
+                  type="month"
+                  placeholder="YYYY-MM"
+                  pattern="\\d{4}-\\d{2}"
+                  value={endOldDraft}
+                  onChange={e => setEndOldDraft(e.target.value)}
+                  onBlur={() => commitMonth('endOldContract', endOldDraft, dongle.endOldContract)}
+                />
+              </label>
+            )}
             <label className="sma-field">
               <span className="sma-info-label">New agreement starts</span>
               <input

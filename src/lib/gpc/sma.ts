@@ -147,6 +147,8 @@ export interface SmaDongleView {
   months: number
   /** Months of lapsed cover between the old agreement and the new one. */
   gapMonths: number
+  /** "older" rather than a date: the missing months are the catalog maximum. */
+  isOlderSelected: boolean
   totalMsrp: string
   totalDp: string
   /** The options switched on, licence model included. */
@@ -174,6 +176,7 @@ export function smaDongles(order: OrderDocument): SmaDongleView[] {
       startNewContract,
       endNewContract,
       endOldContract,
+      isOlderSelected: text(row, 'IsOlderSelected') === 'true',
       months:
         startNewContract && endNewContract
           ? monthsBetween(startNewContract, endNewContract)
@@ -332,12 +335,20 @@ export function removeSmaDongle(order: OrderDocument, pdb: GpcContainer, dongleI
 
 export interface SmaContractEdit {
   dongleId?: string
+  /**
+   * Giving a date turns "older" off by itself. GPC's picker offers a date *or*
+   * "older", never both, and while the flag is set the missing months are the
+   * catalog's maximum no matter what date is stored — so leaving it set made
+   * the date look accepted and change nothing.
+   */
   endOldContract?: string
   startNewContract?: string
   months?: number
   endNewContract?: string
   licenseUserEmail?: string
   licenseUserName?: string
+  /** Set outright when the operator picks "older" rather than a date. */
+  isOlderSelected?: boolean
 }
 
 /**
@@ -357,6 +368,12 @@ export function setSmaContract(
   if (!row) throw new Error(`sma: the order has no dongle row ${dongleIndex}`)
 
   if (edit.dongleId !== undefined) setText(row, 'DongleId', edit.dongleId)
+  // A real end date and "older" are alternatives, so one displaces the other.
+  if (edit.isOlderSelected !== undefined) {
+    setText(row, 'IsOlderSelected', String(edit.isOlderSelected))
+  } else if (edit.endOldContract) {
+    setText(row, 'IsOlderSelected', 'false')
+  }
   const touchesTerm =
     edit.endOldContract !== undefined ||
     edit.startNewContract !== undefined ||

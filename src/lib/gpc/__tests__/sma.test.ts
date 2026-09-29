@@ -435,3 +435,50 @@ describe('a term is always whole months', () => {
     expect(dongle.endNewContract).toBe('2027-08-31T00:00:00')
   })
 })
+
+describe('"older" is a choice, not a missing date', () => {
+  /**
+   * GPC's "end old contract" is a dropdown whose options include **older** —
+   * meaning the lapse predates anything the catalog prices — alongside real
+   * dates. It has to survive a round trip, or the file will not reopen the way
+   * it was built. And while it is set the missing months are the catalog's
+   * maximum whatever date is stored, so a date and "older" are alternatives:
+   * choosing one clears the other.
+   */
+  const build2 = () => {
+    const { order, pdb } = build()
+    addSmaExtension(order, pdb, 'EXT SMA for Sensor Driver ARAMIS', {
+      dongleId: 'd1', endOldContract: '2026-02-28',
+    })
+    return { order, pdb }
+  }
+
+  it('can be set, and says so', () => {
+    const { order, pdb } = build2()
+    setSmaContract(order, pdb, 0, { isOlderSelected: true })
+    expect(smaDongles(order)[0].isOlderSelected).toBe(true)
+    expect(xmlOf(order)).toContain('<IsOlderSelected>true</IsOlderSelected>')
+  })
+
+  it('gives way to a real end date', () => {
+    const { order, pdb } = build2()
+    setSmaContract(order, pdb, 0, { isOlderSelected: true })
+    setSmaContract(order, pdb, 0, { endOldContract: '2025-06-30' })
+    expect(smaDongles(order)[0].isOlderSelected).toBe(false)
+    expect(smaDongles(order)[0].endOldContract).toBe('2025-06-30T00:00:00')
+  })
+
+  it('survives a round trip through the document', () => {
+    const { order, pdb } = build2()
+    setSmaContract(order, pdb, 0, { isOlderSelected: true })
+    const reparsed = parseOrderXml(new TextEncoder().encode(xmlOf(order)))
+    expect(smaDongles(reparsed)[0].isOlderSelected).toBe(true)
+  })
+
+  it('is left alone when only the term changes', () => {
+    const { order, pdb } = build2()
+    setSmaContract(order, pdb, 0, { isOlderSelected: true })
+    setSmaContract(order, pdb, 0, { months: 24 })
+    expect(smaDongles(order)[0].isOlderSelected).toBe(true)
+  })
+})
