@@ -91,7 +91,11 @@ const RIGA = `
     ${section('Licences', 'OneOrMore', [{ name: 'Analysis Pro' }])}
   </Sections></DependentList>
   <DependentList><DependentListName>RTRN</DependentListName><Sections>
-    ${section('Course', 'OneOrMore', [{ name: 'Rig eLearning', def: 1 }])}
+    ${section('Course', 'OneOrMore', [
+      { name: 'Rig eLearning', def: 1 },
+      // Listed, but only offered once the system carries Analysis Pro.
+      { name: 'Rig Analysis eLearning', pre: requires('RIGA', 'Analysis', ['Analysis Pro']) },
+    ])}
   </Sections></DependentList>
   <DependentList><DependentListName>RSMA</DependentListName><Sections>
     ${section('Cover', 'OneOrMore', [{ name: 'Inc. SMA for Driver X', def: 1 }])}
@@ -123,7 +127,7 @@ const ARTICLES: Array<[string, string, number]> = [
   ['Scanner Q', 'S-SCANQ', 20000],
   ['Marker Kit', 'S-MARK', 50],
   ['Probe PM8', 'S-PM8', 300], ['Probe PM3', 'S-PM3', 300], ['I want a different one!', '', 0], ['None -', '', 0],
-  ['Rig eLearning', 'S-ELRN', 800], ['Analysis Pro', 'S-ANLZ', 2000], ['Inc. SMA for Driver X', 'S-ISMA', 100],
+  ['Rig eLearning', 'S-ELRN', 800], ['Analysis Pro', 'S-ANLZ', 2000], ['Rig Analysis eLearning', 'S-AELRN', 900], ['Inc. SMA for Driver X', 'S-ISMA', 100],
 ]
 
 const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
@@ -243,6 +247,15 @@ describe('a sales order becomes the system it describes', () => {
     // The eLearning is the order's own line, found inside Training, not something the rules added.
     expect(report.added[0]).not.toContain('Rig eLearning (in')
     expect(report.added).toContain('Rig eLearning: already in 1 Rig Adjustable')
+  })
+
+  it('drops a Training that cannot hold the course the order sells, and sells the course on its own', () => {
+    // No Analysis Pro on the order, so Training never offers its eLearning.
+    const doc = parseOrderXml(new TextEncoder().encode(ORDER))
+    const order = [...RIG_ORDER, article('Rig Analysis eLearning', 'S-AELRN')]
+    const report = applyOrderBlockItems(doc, pdb(), planOrderBlock(block(order), pdb()))
+    expect(report.added[0]).toContain('left out, not on the order: Rig Training')
+    expect(report.added).toContain('1 × Rig Analysis eLearning')
   })
 
   it('picks a licence the system offers inside the system, not as a line of its own', () => {

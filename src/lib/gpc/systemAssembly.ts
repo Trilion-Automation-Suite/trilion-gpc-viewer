@@ -351,29 +351,34 @@ function dropUnorderedDefaults(
     }
   }
 
-  // Sub-configurations the rules added: kept only when a line of the order is
-  // one of their options (an eLearning inside Training).
+  // Sub-configurations the rules added: kept only when they hold a line of
+  // the order (an eLearning inside Training).
   for (const name of [...editor.addedSubconfigs]) {
     const child = root.subconfigs.find((c) => c.itemName === name)
     if (!child || !('sectionDefs' in child)) continue
-    const wanted = lines.filter((line) => hitsIn(catalog, child.sectionDefs, line).length > 0)
-    if (wanted.length > 0) {
-      // Kept for these lines, so they go inside it: an ARAMIS 1's Training
-      // offers the eLearning but does not pick it by itself.
-      for (const line of wanted) {
-        for (const hit of hitsIn(catalog, child.sectionDefs, line)) {
-          const opt = child.sections[hit.section].options[hit.option]
-          if (opt.amount >= line.amount) break
+    // Kept only for a line of the order that it actually holds. GPC may list
+    // an option and still not offer it — an ARAMIS 1's Training has the
+    // CORRELATE eLearning, but only once CORRELATE Pro is on the system — and
+    // a Training kept empty would sell a course nobody ordered while the
+    // eLearning is added beside it anyway.
+    let holds = false
+    for (const line of lines) {
+      for (const hit of hitsIn(catalog, child.sectionDefs, line)) {
+        const opt = child.sections[hit.section].options[hit.option]
+        if (opt.amount < line.amount) {
           try {
             editor.pick(hit.section, hit.option, line.amount, child)
           } catch {
             continue
           }
-          if (opt.amount >= line.amount) break
+        }
+        if (opt.amount >= line.amount) {
+          holds = true
+          break
         }
       }
-      continue
     }
+    if (holds) continue
     const si = root.sections.findIndex((sec, i) => root.sectionDefs[i].isSubconfig && sec.options[0]?.name === name)
     if (si < 0) continue
     const opt = root.sections[si].options[0]
