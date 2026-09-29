@@ -11,7 +11,14 @@ Perhaps this is a .gproducts which was renamed to .gconfiguration"**. It is a
 catch-all. Four distinct causes have produced it, none of them a missing
 relationship. Do not read the message literally.
 
-**When a file is refused, read GPC's log before anything else:**
+**If GPC has converted the same order itself, diff the two first** — that beat
+the log on Q17. Count every element path in both `order.xml` files and print
+only the paths whose counts disagree; then compare the *shape* of each leaf
+value (int / dec / bool / date / empty / text) and flag a shape that appears on
+one side only. `cmp -l` the two `config.xml` files: a handful of differing bytes
+in 47 MB says the catalog is being re-serialised rather than copied.
+
+**Otherwise, read GPC's log before anything else:**
 
 ```
 %APPDATA%\Made in Office\<appname>\logs\<yyyy-MM-dd>.txt
@@ -36,6 +43,12 @@ fills in a field.
 | prices, discounts, rounding | `ArticlesData`, `DiscountsData`, `RoundingRules` in `config.xml` |
 | how anything is calculated | the decompiled helpers, then check against a real file |
 
+**`validateOrderXml` and the harness tools are regex scanners.** They check
+member order and enum values; they cannot see that a document is *malformed* —
+an unclosed tag or an unbound prefix passes them. Parse anything suspect with a
+real parser as its own step: it is the cheapest fatal cause and nothing else
+here tests for it.
+
 `src/lib/gpc/memberOrder.ts` is **generated** from those declarations by
 `internal-apps/gpc-viewer/fidelity/harness/gen-member-order.mjs`. Do not hand-edit
 it. `validateOrderXml` checks a document against it, enum values included; run
@@ -55,6 +68,11 @@ it over anything new before shipping.
   unrepresentable, not merely unusual.
 - **`IsOlderSelected` is a dropdown choice**, not an absent date. While it is
   set the missing months are the catalog maximum whatever date is stored.
+- **A dependent list's sections change between releases, and an order mirrors
+  them.** PDB290 deleted a section from `SMA_EXT`, so an SMA order converted
+  forward without re-deriving the mirror still names 12 sections where the
+  catalog defines 11 — Q17. Converting a catalog is not only re-pricing
+  articles; anything copied from the old catalog's *structure* goes stale.
 
 ## Display-only data
 
