@@ -11,14 +11,10 @@ Perhaps this is a .gproducts which was renamed to .gconfiguration"**. It is a
 catch-all. Four distinct causes have produced it, none of them a missing
 relationship. Do not read the message literally.
 
-**If GPC has converted the same order itself, diff the two first** — that beat
-the log on Q17. Count every element path in both `order.xml` files and print
-only the paths whose counts disagree; then compare the *shape* of each leaf
-value (int / dec / bool / date / empty / text) and flag a shape that appears on
-one side only. `cmp -l` the two `config.xml` files: a handful of differing bytes
-in 47 MB says the catalog is being re-serialised rather than copied.
-
-**Otherwise, read GPC's log before anything else:**
+**Read GPC's log before anything else.** On Q17 it named both failing frames in
+one read, after a diff of two conversions had found the right structure and the
+wrong completeness — and it showed the failure was not a deserialization error at
+all. Ask for the log first, every time:
 
 ```
 %APPDATA%\Made in Office\<appname>\logs\<yyyy-MM-dd>.txt
@@ -26,7 +22,22 @@ in 47 MB says the catalog is being re-serialised rather than copied.
 
 The dialog interpolates the *file path*; the exception — with the
 XmlSerializer line and column — goes only to the log. It has answered in one
-line what six hand-built bisect files could not.
+line what six hand-built bisect files could not. The crash may be nowhere near
+deserialization: Q17's was `ArgumentOutOfRangeException` in
+`DependentListDataFactoryExt.InitRuntimeData`, with the file parsing fine.
+
+**Then, if GPC has produced its own version of the same order, diff the two.**
+Count every element path in both `order.xml` files and print only the paths whose
+counts disagree; then compare the *shape* of each leaf value (int / dec / bool /
+date / empty / text) and flag a shape appearing on one side only. `cmp -l` the two
+`config.xml` files: a few differing bytes in 47 MB says the catalog is being
+re-serialised rather than copied.
+
+**Best of all, ask for a re-save.** GPC opening one of our files and saving it
+back is the authoritative answer to "what should this order look like on this
+catalog" for that exact order. It settled the `##Euro`/`##Partner` question:
+GPC recreated `##Partner`, the *selected* list, and not `##Euro` — they are a
+cache `AdministrationDataExt` builds on demand, not a required part.
 
 ## Where the answers are
 
@@ -68,11 +79,26 @@ it over anything new before shipping.
   unrepresentable, not merely unusual.
 - **`IsOlderSelected` is a dropdown choice**, not an absent date. While it is
   set the missing months are the catalog maximum whatever date is stored.
-- **A dependent list's sections change between releases, and an order mirrors
-  them.** PDB290 deleted a section from `SMA_EXT`, so an SMA order converted
-  forward without re-deriving the mirror still names 12 sections where the
-  catalog defines 11 — Q17. Converting a catalog is not only re-pricing
-  articles; anything copied from the old catalog's *structure* goes stale.
+- **An order mirrors a dependent list's whole option tree, and GPC resolves it
+  at two levels.** `SectionScreenData` is indexed *positionally* against the
+  catalog in `DependentListDataFactoryExt.InitRuntimeData` — a count that
+  disagrees is an `ArgumentOutOfRangeException` before any window opens.
+  `SectionArticleScreenData` is resolved *by lookup* in
+  `DependentListHandler.UpdateRestrictions` — a stale option is a
+  `NullReferenceException` when the price list is set. PDB290 dropped one
+  `SMA_EXT` section and two Floating options, which in an 8-dongle Care order is
+  8 stale sections and 24 stale options (Q17). Fixing one level only moves the
+  crash. Converting a catalog is not only re-pricing articles: anything copied
+  from the old catalog's *structure* goes stale, and none of it is visible to
+  `validateOrderXml`.
+
+- **`listOf` descends two levels, `kidsOf` one.** A catalog's
+  `DependentList/Sections` and `Section/Articles` are single members, so
+  `listOf(list, 'Sections', '')` type-checks, runs, and returns `[]`. It would
+  have emptied every option mirror on every conversion, silently. Where a helper
+  returns "nothing found" for what is really a structural mistake, make the
+  caller refuse the empty result — `reconcileMirror` will not write an empty
+  mirror.
 
 ## Display-only data
 
@@ -94,6 +120,18 @@ anything relying on that control needs a placeholder and a pattern.
 
 - `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build` before every
   commit. One pre-existing `react-refresh` warning is expected.
+- **A release is its own commit, titled exactly `vX.Y.Z`, touching only
+  `package.json` and `package-lock.json`.** Code goes in `feat:`/`fix:` commits
+  before it. `git log --oneline` shows the pattern going back many releases;
+  bundling the bump into the fix commit hides the release from anyone scanning
+  commit names. `main` is the working branch, and CI deploys it to GitHub Pages
+  on push.
+- **When a new test fails, ask whether the expectation or the code is wrong.**
+  Of the nine tests written for Q17, two failed first and both times the test was
+  wrong — a dropped section's options should not also be counted as option
+  removals, and a screen total *should* follow a repriced option when it was a
+  plain sum. Write the assertion from the rule, not from what the old code
+  happened to do.
 - The fidelity ladder lives in the private repo:
   `cd internal-apps/gpc-viewer/fidelity && node harness/verify.mjs --all`.
   M0–M5 green, M6 open. Never mark a milestone green without the scoreboard
