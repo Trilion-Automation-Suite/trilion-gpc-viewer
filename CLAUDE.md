@@ -116,6 +116,23 @@ it over anything new before shipping.
 - Creating a sub-configuration that is not on the order yet is refused
   (`NeedsGpcError`); so is committing a total built on item-wide quantity
   discounts or additional-choice articles.
+- **Sections carry comments, and some require one.** `MandatoryComment` (90
+  sections in PDB290: Training Participants, old dongle IDs and serials,
+  entitlement e-mails) makes GPC paint the section incomplete until
+  `<Comments>` is filled; `CommentFormats` holds regexes or one date pattern
+  (`d.m.y`, validated as a date, not a regex). Port of
+  `SectionScreenDataValidatorExt` / `GpcFormatValidator`. A comment feeds no rule
+  or price, so a comment-only change commits without re-pricing.
+
+## Speed: never parse the catalog in a render path
+
+A PDB's `config.xml` is ~47 MB; `readPdbConfig` costs ~250 ms on a desktop and
+several times that on an iPad. v2.1.0 ran it on **every render** (the SMA picker's
+option list, and again per SMA row for upgrade prices), so each keystroke in an
+edit field waited one to two seconds. Anything derived from the catalog is built
+once per catalog (`getConfig`, `upgradeCatalog`, the engine catalog) and cached
+by key in `App.tsx`; per-row results are memoised on the row object. Before
+adding a `get*()` call to JSX, check it is a cache hit.
 
 ## Display-only data
 
