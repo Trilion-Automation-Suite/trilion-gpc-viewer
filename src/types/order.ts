@@ -155,8 +155,14 @@ export interface SmaDependentList {
   endOldContract: string
   /** Whole months the new term covers — what GPC prices the agreement by. */
   months: number
-  /** Months of lapsed cover before the new term, which are not charged for. */
+  /** Months of lapsed cover before the new term. GPC charges an upgrade for these. */
   gapMonths: number
+  /**
+   * "older" in GPC's end-of-old-contract picker: the previous cover lapsed so
+   * long ago the exact date no longer matters, and the missing months are
+   * taken as the catalog's maximum.
+   */
+  isOlderSelected: boolean
   totalMsrp: number | null
   totalDp: number | null
 }

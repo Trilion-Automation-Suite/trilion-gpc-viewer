@@ -182,6 +182,7 @@ function parseSmaDetails(el: Element): SmaDetails {
             ? monthsBetween(startNewContract, endNewContract)
             : MINIMUM_CONTRACT_MONTHS,
         gapMonths: lapsedMonths(endOldContract, startNewContract),
+        isOlderSelected: childBool(d, 'IsOlderSelected'),
         totalMsrp: childFloat(d, 'TotalMsrp'),
         totalDp: childFloat(d, 'TotalDp'),
       }

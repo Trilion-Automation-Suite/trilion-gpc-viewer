@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
-import type { OrderSummary } from '../types/order.ts'
+import type { OrderSummary, SmaDetails } from '../types/order.ts'
+import type { UpgradeLine } from '../lib/gpc/reentry.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
 import type { LicenseOption } from '../lib/gpc/licenses.ts'
 import { PasteOrderModal } from './PasteOrderModal.tsx'
@@ -36,6 +37,8 @@ interface ItemsTabProps {
   getPdb: () => GpcContainer | null
   openCatalog: string
   onPasteOrder: (plan: OrderBlockPlan) => void
+  /** The lapsed-cover upgrade, computed from the catalog for display only. */
+  getUpgrades: (sma: SmaDetails) => UpgradeLine[]
   /** A block that arrived by link; opens the preview as soon as it is set. */
   linkedOrder: string | null
   onLinkedOrderHandled: () => void
@@ -356,6 +359,7 @@ export function ItemsTab({
   getPdb,
   openCatalog,
   onPasteOrder,
+  getUpgrades,
   linkedOrder,
   onLinkedOrderHandled,
 }: ItemsTabProps) {
@@ -469,6 +473,7 @@ export function ItemsTab({
         onSmaContractChange={onSmaContractChange}
         onAddSmaExtension={onAddSmaExtension}
         onRemoveSmaExtension={onRemoveSmaExtension}
+        getUpgrades={getUpgrades}
       />
       {activeModal === 'product' && (
         <SearchProductModal catalog={getArticleCatalog()} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />

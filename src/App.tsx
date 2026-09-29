@@ -1,7 +1,7 @@
 declare const __APP_VERSION__: string
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, TechnicalContact } from './types/order.ts'
+import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, SmaDetails, TechnicalContact } from './types/order.ts'
 import type { ArticleCatalogEntry } from './lib/parseConfig.ts'
 import { buildArticleCatalog } from './lib/parseConfig.ts'
 import { parseOrder } from './lib/parseOrder.ts'
@@ -16,6 +16,8 @@ import {
 } from './lib/gpc/sma.ts'
 import type { SmaContractEdit } from './lib/gpc/sma.ts'
 import { addLicense, licenseOptionsFromConfig } from './lib/gpc/licenses.ts'
+import { upgradeLines } from './lib/gpc/reentry.ts'
+import type { UpgradeLine } from './lib/gpc/reentry.ts'
 import { applyOrderBlockFields, applyOrderBlockItems } from './lib/gpc/applyOrderBlock.ts'
 import { catalogOfLink, clearOrderLink, readOrderLink } from './lib/orderLink.ts'
 import { isUntitled, orderFileName } from './lib/orderFileName.ts'
@@ -77,6 +79,11 @@ type AppState =
 
 let nextLoadId = 1
 /** A newly opened file: the sync effect should adopt it wholesale. */
+/** `Currency/ExchangeRate` as written, so the decimal is not rounded on the way. */
+function exchangeRateOf(orderXml: string): string {
+  return /^ {2}<Currency>[\s\S]*?<ExchangeRate>([^<]*)</m.exec(orderXml)?.[1] ?? '1'
+}
+
 function opened(result: ParseResult): AppState {
   return { status: 'loaded', result, loadId: nextLoadId++ }
 }
@@ -422,6 +429,28 @@ export function App() {
       setAddItemError(err instanceof Error ? err.message : String(err))
     }
   }, [state, getPdb])
+
+  /**
+   * The upgrade GPC charges when cover has lapsed, computed from the catalog.
+   *
+   * Display only. The configuration stores none of this — GPC recomputes it on
+   * open and keeps only the totals — so showing it must not change what a save
+   * writes. Nothing here touches the document.
+   */
+  const getUpgrades = useCallback((sma: SmaDetails): UpgradeLine[] => {
+    if (state.status !== 'loaded' || !order) return []
+    const pdb = getPdb()
+    if (!pdb) return []
+    try {
+      return upgradeLines(sma, pdb, {
+        priceListName: order.priceList,
+        currencyIso: order.currency || 'USD',
+        exchangeRate: exchangeRateOf(state.result.rawOrderXml),
+      })
+    } catch {
+      return []
+    }
+  }, [state, order, getPdb])
 
   /** The agreements `SMA_EXT` offers, for the per-dongle picker. */
   const getSmaCatalog = useCallback((): string[] => {
@@ -904,6 +933,7 @@ export function App() {
                   getPdb={getPdb}
                   openCatalog={state.status === 'loaded' ? state.result.pdbVersion : ''}
                   onPasteOrder={handlePasteOrder}
+                  getUpgrades={getUpgrades}
                   linkedOrder={linkedOrder}
                   onLinkedOrderHandled={() => setLinkedOrder(null)}
                 />

@@ -654,3 +654,39 @@
   border-color: var(--danger, #b3261e);
   outline: 1px solid color-mix(in srgb, var(--danger, #b3261e) 30%, transparent);
 }
+
+/*
+ * The upgrade charged when cover has lapsed. GPC shows it as a sub-row under
+ * the dongle with its own SAP number, so it is shown that way here. It is
+ * computed from the catalog every time it is drawn and stored nowhere — the
+ * configuration keeps only the totals.
+ */
+.sma-upgrade-row td {
+  background: color-mix(in srgb, #d98324 8%, transparent);
+}
+
+.sma-upgrade-label {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: #d98324;
+  border-radius: 3px;
+  vertical-align: middle;
+}
+
+.sma-upgrade-sap {
+  margin-left: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78em;
+  color: var(--text-muted, #666);
+}
+
+.sma-upgrade-why {
+  font-size: 0.82em;
+  color: var(--text-muted, #666);
+}

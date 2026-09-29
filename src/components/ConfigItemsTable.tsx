@@ -3,6 +3,7 @@ import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentL
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import { MINIMUM_CONTRACT_MONTHS, monthOf } from '../lib/gpc/contractTerm.ts'
 import { questionIssues } from '../lib/gpc/questions.ts'
+import type { UpgradeLine } from '../lib/gpc/reentry.ts'
 import type { SmaContractEdit } from '../lib/gpc/sma.ts'
 import './ConfigItemsTable.css'
 
@@ -18,6 +19,11 @@ interface ConfigItemsTableProps {
   onSmaContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddSmaExtension: (dongleIndex: number, articleName: string) => void
   onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
+  /**
+   * The upgrade GPC charges when cover has lapsed. Computed for display only —
+   * the file stores none of it, and saving must leave it that way.
+   */
+  getUpgrades: (sma: SmaDetails) => UpgradeLine[]
 }
 
 function calcMargin(msrp: number | null, dp: number | null): number | null {
@@ -300,11 +306,12 @@ function DongleRowEditor({
               <span className="sma-info-label">Ends</span>
               <span className="sma-info-value">{fmtDate(dongle.endNewContract)}</span>
             </div>
-            {dongle.gapMonths > 0 && (
+            {(dongle.gapMonths > 0 || dongle.isOlderSelected) && (
               <div className="sma-field">
                 <span className="sma-info-label">Lapsed cover</span>
                 <span className="sma-info-value">
-                  {dongle.gapMonths} month{dongle.gapMonths === 1 ? '' : 's'}, not charged
+                  {dongle.isOlderSelected ? 'older than the catalog counts' : `${dongle.gapMonths} month${dongle.gapMonths === 1 ? '' : 's'}`}
+                  {' — an upgrade is charged'}
                 </span>
               </div>
             )}
@@ -321,10 +328,12 @@ function DongleRowEditor({
                 {fmtDate(dongle.startNewContract)} &rarr; {fmtDate(dongle.endNewContract)} ({dongle.months} months)
               </span>
             </div>
-            {dongle.gapMonths > 0 && (
+            {(dongle.gapMonths > 0 || dongle.isOlderSelected) && (
               <div className="sma-field">
                 <span className="sma-info-label">Lapsed cover</span>
-                <span className="sma-info-value">{dongle.gapMonths} months, not charged</span>
+                <span className="sma-info-value">
+                  {dongle.isOlderSelected ? 'older than the catalog counts' : `${dongle.gapMonths} months`} — an upgrade is charged
+                </span>
               </div>
             )}
           </>
@@ -377,6 +386,7 @@ function SmaDetailPanel({
   onContractChange,
   onAddExtension,
   onRemoveExtension,
+  upgrades,
 }: {
   sma: SmaDetails
   dec: number
@@ -386,6 +396,7 @@ function SmaDetailPanel({
   onContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddExtension: (dongleIndex: number, articleName: string) => void
   onRemoveExtension: (dongleIndex: number, articleName: string) => void
+  upgrades: UpgradeLine[]
 }) {
   const pricedArticles = sma.softwareArticles.filter(a => a.msrp !== null && a.msrp !== 0)
 
@@ -465,6 +476,29 @@ function SmaDetailPanel({
                     )}
                   </tr>
                 ))}
+                {/*
+                  * The upgrade GPC charges when cover has lapsed. It is shown
+                  * here because GPC shows it here — as a sub-row under the
+                  * dongle, with its own SAP number. It is computed from the
+                  * catalog on every render and written to no file: the
+                  * configuration stores only the totals, and a save has to
+                  * leave them exactly as GPC left them.
+                  */}
+                {upgrades.map((u, i) => (
+                  <tr key={`upgrade-${i}`} className="sma-upgrade-row">
+                    <td>
+                      <span className="sma-upgrade-label">Upgrade</span>
+                      {u.licenseArticleName}
+                      <span className="sma-upgrade-sap">{u.sapUpgradeNr}</span>
+                    </td>
+                    <td className="sma-mono">{u.dongleId}</td>
+                    <td className="right"><PriceCell value={u.msrp} dec={dec} /></td>
+                    <td className="right"><PriceCell value={u.dp} dec={dec} /></td>
+                    <td colSpan={isEditing ? 4 : 3} className="sma-upgrade-why">
+                      {u.missingMonths} months of lapsed cover
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           )}
@@ -486,6 +520,7 @@ function ItemRow({
   onSmaContractChange,
   onAddSmaExtension,
   onRemoveSmaExtension,
+  getUpgrades,
 }: {
   item: ConfigItem
   expanded: boolean
@@ -498,6 +533,7 @@ function ItemRow({
   onSmaContractChange: (dongleIndex: number, patch: SmaContractEdit) => void
   onAddSmaExtension: (dongleIndex: number, articleName: string) => void
   onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
+  getUpgrades: (sma: SmaDetails) => UpgradeLine[]
 }) {
   const margin = calcMargin(item.totalMsrp, item.totalDp)
 
@@ -601,6 +637,7 @@ function ItemRow({
               onContractChange={onSmaContractChange}
               onAddExtension={onAddSmaExtension}
               onRemoveExtension={onRemoveSmaExtension}
+              upgrades={getUpgrades(item.sma!)}
             />
           )}
           {item.sections.length > 0 && <SectionRows sections={item.sections} dec={dec} colSpan={colSpan} />}
@@ -621,6 +658,7 @@ export function ConfigItemsTable({
   onSmaContractChange,
   onAddSmaExtension,
   onRemoveSmaExtension,
+  getUpgrades,
 }: ConfigItemsTableProps) {
   const visibleItems = order.items.filter((i) => !i.isHidden)
   const totals = visibleItems.reduce(
@@ -692,6 +730,7 @@ export function ConfigItemsTable({
                 onSmaContractChange={onSmaContractChange}
                 onAddSmaExtension={onAddSmaExtension}
                 onRemoveSmaExtension={onRemoveSmaExtension}
+                getUpgrades={getUpgrades}
               />
             )
           })}
