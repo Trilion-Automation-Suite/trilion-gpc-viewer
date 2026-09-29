@@ -123,11 +123,30 @@ export function PdbSwitcher({
               Renamed: {report.configurationItems.renamed.map((r) => `${r.from} → ${r.to}`).join('; ')}
             </p>
           )}
+          {(report.dependentLists.sectionsRemoved.length > 0 ||
+            report.dependentLists.optionsRemoved.length > 0 ||
+            report.dependentLists.optionsAdded.length > 0) && (
+            <p className="pdb-report-note">
+              Option trees rebuilt on {report.dependentLists.reconciled} line
+              {report.dependentLists.reconciled === 1 ? '' : 's'}:{' '}
+              {[
+                report.dependentLists.sectionsRemoved.length &&
+                  `${new Set(report.dependentLists.sectionsRemoved).size} section(s) this catalog dropped`,
+                report.dependentLists.optionsRemoved.length &&
+                  `${new Set(report.dependentLists.optionsRemoved).size} option(s) dropped`,
+                report.dependentLists.optionsAdded.length &&
+                  `${new Set(report.dependentLists.optionsAdded).size} option(s) added`,
+              ].filter(Boolean).join(', ')}. GPC cannot open a file whose option tree
+              disagrees with the catalog, so this is required, not cosmetic.
+            </p>
+          )}
           {report.dependentListsNotConverted.length > 0 && (
             <p className="pdb-report-warn">
-              Not re-priced (still on the old catalog):{' '}
-              {report.dependentListsNotConverted.join(', ')}. Their selections carry no
-              article reference, so their prices could not be refreshed — check them by hand.
+              This catalog has no option tree named{' '}
+              {report.dependentListsNotConverted.join(', ')}, so{' '}
+              {report.dependentListsNotConverted.length === 1 ? 'that line was' : 'those lines were'}{' '}
+              left on the old one. GPC will probably refuse the saved file — send it to
+              whoever maintains the catalog rather than editing it here.
             </p>
           )}
           {report.issues.length > 0 && (

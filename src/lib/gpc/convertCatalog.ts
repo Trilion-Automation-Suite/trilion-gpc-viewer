@@ -17,9 +17,10 @@
  */
 import type { GpcContainer } from './container.ts'
 import { readPdbConfig } from './blankOrder.ts'
-import { decimalString, priceArticle, recalculateOrder } from './addItem.ts'
+import { decimalString, findArticle, priceArticle, recalculateOrder } from './addItem.ts'
+import { findDependentList } from './dependentList.ts'
 import { fromInt, parseDecimalOrNull } from './decimal.ts'
-import { scanRoundingRules } from './roundingRules.ts'
+import { scanDiscounts, scanRoundingRules } from './roundingRules.ts'
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
 
 /** `AbasNr` uses this as "no value"; it must not be treated as a key. */
@@ -54,12 +55,27 @@ export interface ConversionReport {
   /** Line items whose totals are not a plain sum, so they were left alone. */
   totalsLeft: string[]
   /**
-   * Dependent-list line items, which are NOT converted. Their selections live in
-   * `SectionArticleScreenData`, which carries only a display `Name` and a price —
-   * no SapNr, no embedded article — and the catalog source for those section
-   * prices has not been located. Converting the rest of the order while leaving
-   * these at their old prices is a partial conversion, so it is reported loudly
-   * rather than left for the reader to notice.
+   * Dependent-list screens whose option mirror was rebuilt against the target
+   * catalog. This is not cosmetic: GPC resolves the mirror at two levels and
+   * crashes on startup if either is stale — see Q17. `SectionScreenData` is
+   * indexed *positionally* against the catalog's sections in
+   * `DependentListDataFactoryExt.InitRuntimeData`, so a section count that
+   * disagrees is an `ArgumentOutOfRangeException`; `SectionArticleScreenData` is
+   * resolved by lookup in `DependentListHandler.UpdateRestrictions`, so a stale
+   * option is a `NullReferenceException` when the price list is set.
+   */
+  dependentLists: {
+    reconciled: number
+    sectionsAdded: string[]
+    sectionsRemoved: string[]
+    optionsAdded: string[]
+    optionsRemoved: string[]
+  }
+  /**
+   * Dependent-list screens that could NOT be reconciled, because the target
+   * catalog has no list under the item's `WorksheetArticleFilter`. Left exactly
+   * as they were, which keeps the file readable by this viewer but means GPC may
+   * refuse it.
    */
   dependentListsNotConverted: string[]
   issues: ConversionIssue[]
@@ -98,6 +114,18 @@ function joinStrings(e: ElementValue, name: string): string {
 function clone(v: OrderValue): OrderValue {
   if (v.kind !== 'element') return { ...v }
   return { kind: 'element', type: v.type, members: v.members.map((m) => ({ name: m.name, value: clone(m.value) })) }
+}
+
+/**
+ * Element children of a single named member. Not to be confused with `listOf`,
+ * which descends two levels (`ArticlesData` then `Articles`) — a catalog's
+ * `DependentList/Sections` and `Section/Articles` are one level, and using
+ * `listOf` for them returns an empty array rather than failing.
+ */
+function kidsOf(parent: ElementValue, name: string): ElementValue[] {
+  const l = sub(parent, name)
+  if (!l) return []
+  return l.members.map((m) => m.value).filter((x): x is ElementValue => x.kind === 'element')
 }
 
 function listOf(parent: ElementValue, section: string, list: string): ElementValue[] {
@@ -222,6 +250,9 @@ export function convertOrderToCatalog(
     configurationItems: { replaced: 0, renamed: [], unmatched: [] },
     priceChanges: [],
     totalsLeft: [],
+    dependentLists: {
+      reconciled: 0, sectionsAdded: [], sectionsRemoved: [], optionsAdded: [], optionsRemoved: [],
+    },
     dependentListsNotConverted: [],
     issues: [],
   }
@@ -235,7 +266,8 @@ export function convertOrderToCatalog(
   // catalog changes its bands, and converting has to follow the new ones.
   const rules = scanRoundingRules(configXml(targetPdb))
 
-  convertNode(order.root, { index, report, reprice, priceList, rate, rules, currencyIso })
+  const discounts = scanDiscounts(configXml(targetPdb))
+  convertNode(order.root, { config, discounts, index, report, reprice, priceList, rate, rules, currencyIso })
 
   const version = index.versionName
   if (version) setText(order.root, 'SourceFileName', version)
@@ -251,6 +283,9 @@ export function convertOrderToCatalog(
 }
 
 interface Ctx {
+  /** The target catalog's root, for the dependent-list option tree. */
+  config: ElementValue
+  discounts: Map<string, import('./decimal.ts').Dec>
   index: CatalogIndex
   report: ConversionReport
   reprice: boolean
@@ -290,14 +325,11 @@ function convertNode(node: ElementValue, ctx: Ctx): void {
       continue
     }
 
-    // A dependent-list screen: its priced selections are Sections, not Articles.
+    // A dependent-list screen: its priced selections are Sections, not Articles,
+    // and the mirror has to be brought onto the target catalog's own shape
+    // before the cloned item is replaced — see `reconcileMirror`.
     if (value.members.some((m) => m.name === 'Sections')) {
-      const itemName = key(sub(value, 'ConfigurationItem') ?? value, 'Name') ?? '(unnamed)'
-      if (!ctx.report.dependentListsNotConverted.includes(itemName)) {
-        ctx.report.dependentListsNotConverted.push(itemName)
-      }
-      // The cloned catalog item is still refreshed; only the section prices are
-      // left, so the item's own totals must be left alone to stay consistent.
+      reconcileMirror(value, ctx)
       const ci = value.members.find((m) => m.name === 'ConfigurationItem')
       if (ci && ci.value.kind === 'element') {
         replaceConfigurationItem(ci as { name: string; value: ElementValue }, ctx)
@@ -323,6 +355,194 @@ function convertNode(node: ElementValue, ctx: Ctx): void {
     } else if (beforeSum.lines > 0) {
       ctx.report.totalsLeft.push(key(sub(value, 'ConfigurationItem') ?? value, 'Name') ?? '(unnamed item)')
     }
+  }
+}
+
+/**
+ * Brings a dependent-list screen's option mirror onto the target catalog.
+ *
+ * An order mirrors the whole option tree of the list it points at — every
+ * section, every option, selected or not. When a catalog drops a section or an
+ * option, an order converted forward still names it, and GPC dies on startup:
+ * PDB290 removed one `SMA_EXT` section and two Floating articles, which is 8
+ * stale sections and 24 stale options in an 8-dongle Care order.
+ *
+ * So this walks the *catalog's* sections and options in catalog order and keeps
+ * the order's own row wherever the catalog still has it — preserving `Amount`,
+ * `AmountMode`, `Step` and any overwritten price, which are the user's
+ * configuration — dropping what the catalog no longer defines and inserting an
+ * unselected row for what it has gained. Prices come from the new catalog.
+ *
+ * The screen's own `TotalMsrp`/`TotalDp` are deliberately NOT touched here. A
+ * support screen prices on contract months and volume discounts, not a sum of
+ * its options, and `convertNode` already refuses to rewrite totals it cannot
+ * show were a plain sum.
+ */
+function reconcileMirror(screen: ElementValue, ctx: Ctx): void {
+  const item = sub(screen, 'ConfigurationItem')
+  const listName = item ? text(item, 'WorksheetArticleFilter') : null
+  const sectionsMember = screen.members.find((m) => m.name === 'Sections')
+  if (!listName || !sectionsMember || sectionsMember.value.kind !== 'element') return
+
+  let list: ElementValue
+  try {
+    list = findDependentList(ctx.config, listName)
+  } catch {
+    // A `DongleList` item carries no Name, so the filter is the only label.
+    if (!ctx.report.dependentListsNotConverted.includes(listName)) {
+      ctx.report.dependentListsNotConverted.push(listName)
+    }
+    return
+  }
+
+  const existing = new Map<string, ElementValue>()
+  for (const s of sectionsMember.value.members) {
+    if (s.value.kind !== 'element') continue
+    const n = text(s.value, 'Name')
+    if (n !== null) existing.set(n, s.value)
+  }
+
+  const rebuilt: Array<{ name: string; value: OrderValue }> = []
+  const seenSections = new Set<string>()
+  for (const catalogSection of kidsOf(list, 'Sections')) {
+    const name = text(catalogSection, 'LongName') ?? ''
+    seenSections.add(name)
+    const prior = existing.get(name)
+    if (!prior) {
+      ctx.report.dependentLists.sectionsAdded.push(`${listName}/${name}`)
+    }
+    rebuilt.push({
+      name: 'SectionScreenData',
+      value: reconcileSection(catalogSection, prior, name, listName, ctx),
+    })
+  }
+  for (const name of existing.keys()) {
+    if (!seenSections.has(name)) ctx.report.dependentLists.sectionsRemoved.push(`${listName}/${name}`)
+  }
+
+  if (rebuilt.length === 0) {
+    // The target catalog named a list with no sections, or a lookup silently
+    // returned nothing. Either way an empty mirror is worse than a stale one:
+    // leave the order alone and say so.
+    if (!ctx.report.dependentListsNotConverted.includes(listName)) {
+      ctx.report.dependentListsNotConverted.push(listName)
+    }
+    return
+  }
+  sectionsMember.value.members = rebuilt
+  ctx.report.dependentLists.reconciled++
+}
+
+/** One section's options, in catalog order, keeping the order's own choices. */
+function reconcileSection(
+  catalogSection: ElementValue,
+  prior: ElementValue | null | undefined,
+  sectionName: string,
+  listName: string,
+  ctx: Ctx
+): ElementValue {
+  const priorOptions = new Map<string, ElementValue>()
+  const priorList = prior ? sub(prior, 'SectionArticles') : null
+  for (const o of priorList?.members ?? []) {
+    if (o.value.kind !== 'element') continue
+    const n = text(o.value, 'Name')
+    if (n !== null) priorOptions.set(n, o.value)
+  }
+
+  const options: Array<{ name: string; value: OrderValue }> = []
+  const seen = new Set<string>()
+  for (const catalogArticle of kidsOf(catalogSection, 'Articles')) {
+    const name = text(catalogArticle, 'LongName') ?? ''
+    seen.add(name)
+    const kept = priorOptions.get(name)
+    if (kept) {
+      repriceOption(kept, name, ctx)
+      options.push({ name: 'SectionArticleScreenData', value: kept })
+    } else {
+      ctx.report.dependentLists.optionsAdded.push(`${listName}/${sectionName}/${name}`)
+      options.push({ name: 'SectionArticleScreenData', value: newOption(catalogArticle, name, ctx) })
+    }
+  }
+  for (const name of priorOptions.keys()) {
+    if (!seen.has(name)) {
+      ctx.report.dependentLists.optionsRemoved.push(`${listName}/${sectionName}/${name}`)
+    }
+  }
+
+  // Keep the order's own section element so anything it carries beyond Name and
+  // SectionArticles survives; only the option list is rebuilt.
+  const out = prior ?? blankSection(catalogSection, sectionName)
+  const member = out.members.find((m) => m.name === 'SectionArticles')
+  if (member) member.value = { kind: 'element', type: null, members: options }
+  else out.members.push({ name: 'SectionArticles', value: { kind: 'element', type: null, members: options } })
+  return out
+}
+
+function blankSection(catalogSection: ElementValue, name: string): ElementValue {
+  const traits = sub(catalogSection, 'SAPCharacterTraitNames')
+  const members: Array<{ name: string; value: OrderValue }> = [
+    { name: 'Name', value: { kind: 'text', type: null, value: name } },
+    { name: 'SectionArticles', value: { kind: 'element', type: null, members: [] } },
+  ]
+  if (traits) members.push({ name: 'SapCharacterTraitNames', value: clone(traits) })
+  return { kind: 'element', type: null, members }
+}
+
+/** An option the target catalog has gained: present, priced, and unselected. */
+function newOption(catalogArticle: ElementValue, name: string, ctx: Ctx): ElementValue {
+  const t = (value: string): OrderValue => ({ kind: 'text', type: null, value })
+  const priced = optionPricing(name, ctx)
+  return {
+    kind: 'element',
+    type: null,
+    members: [
+      { name: 'Amount', value: t('0') },
+      { name: 'Step', value: t(text(catalogArticle, 'Step') ?? '0') },
+      { name: 'OverwrittenDp', value: { kind: 'nil' } },
+      { name: 'OverwrittenMrsp', value: { kind: 'nil' } },
+      { name: 'PriceOnRequest', value: t('false') },
+      { name: 'EuroMsrp', value: { kind: 'nil' } },
+      { name: 'Msrp', value: priced ? t(decimalString(priced.msrp)) : { kind: 'nil' } },
+      { name: 'Dp', value: priced ? t(decimalString(priced.dp)) : { kind: 'nil' } },
+      { name: 'SumMsrp', value: { kind: 'nil' } },
+      { name: 'SumDp', value: { kind: 'nil' } },
+      { name: 'CustomQuantityDiscount', value: { kind: 'nil' } },
+      { name: 'Name', value: t(name) },
+      { name: 'AmountMode', value: t('Unselected') },
+    ],
+  }
+}
+
+/**
+ * Re-prices a kept option from the new catalog, and only when it already had a
+ * price. An option whose `Msrp` is nil is a selector row with no article behind
+ * it, not an option priced at zero, and giving it a number would invent one.
+ */
+function repriceOption(option: ElementValue, name: string, ctx: Ctx): void {
+  if (!ctx.reprice) return
+  const had = option.members.find((m) => m.name === 'Msrp')
+  if (!had || had.value.kind === 'nil') return
+  const priced = optionPricing(name, ctx)
+  if (!priced) return
+  for (const [field, value] of [['Msrp', priced.msrp], ['Dp', priced.dp]] as const) {
+    const member = option.members.find((m) => m.name === field)
+    if (!member) continue
+    const before = member.value.kind === 'text' ? member.value.value : null
+    const after = decimalString(value)
+    if (before !== after) {
+      ctx.report.priceChanges.push({ longName: name, field, from: before ?? '', to: after })
+      member.value = { kind: 'text', type: null, value: after }
+    }
+  }
+}
+
+function optionPricing(name: string, ctx: Ctx): { msrp: import('./decimal.ts').Dec; dp: import('./decimal.ts').Dec } | null {
+  try {
+    return priceArticle(
+      findArticle(ctx.config, name), ctx.priceList ?? '', ctx.rate, ctx.rules, ctx.currencyIso, ctx.discounts
+    )
+  } catch {
+    return null
   }
 }
 
