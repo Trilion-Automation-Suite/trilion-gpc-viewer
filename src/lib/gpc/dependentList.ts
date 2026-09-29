@@ -35,6 +35,7 @@
 import type { GpcContainer } from './container.ts'
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
 import { setMember } from './orderXml.ts'
+import { DEFAULT_LICENSE_USER, asksForLicenseUser } from './licenseUser.ts'
 import { readPdbConfig } from './blankOrder.ts'
 import type { Dec } from './decimal.ts'
 import { add, divide, fromInt, isZero, multiply } from './decimal.ts'
@@ -226,7 +227,11 @@ export function buildableItems(config: ElementValue): BuildableItem[] {
  */
 export function startDependentList(order: OrderDocument, pdb: GpcContainer, itemName: string): string {
   const no = String(nextItemNumber(order))
-  addDependentList(order, pdb, itemName)
+  const item = findDependentListItem(readPdbConfig(pdb), itemName)
+  const licensed = asksForLicenseUser(field(item, 'Question1'), field(item, 'Question2'))
+  addDependentList(order, pdb, itemName, licensed
+    ? { reply1: DEFAULT_LICENSE_USER.email, reply2: DEFAULT_LICENSE_USER.name }
+    : {})
   return no
 }
 
@@ -244,7 +249,15 @@ export function addSubConfiguration(
 ): ElementValue {
   const ctx = priceContext(order, pdb, {})
   const useInCalculation = field(parent, 'UseInCalculation') !== 'false'
-  const child = buildScreen(ctx, findDependentListItem(ctx.config, itemName), { useInCalculation, no: '' })
+  const item = findDependentListItem(ctx.config, itemName)
+  // The in-system SMA asks who the licences are for; answer with Trilion's
+  // licensing desk, as the operator would, so it is not left incomplete.
+  const licensed = asksForLicenseUser(field(item, 'Question1'), field(item, 'Question2'))
+  const child = buildScreen(ctx, item, {
+    useInCalculation,
+    no: '',
+    ...(licensed ? { reply1: DEFAULT_LICENSE_USER.email, reply2: DEFAULT_LICENSE_USER.name } : {}),
+  })
   child.type = 'DependentListScreenData'
   let list = sub(parent, 'SubConfigurations')
   if (!list) {

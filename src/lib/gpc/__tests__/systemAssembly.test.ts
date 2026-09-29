@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseOrderXml, text } from '../orderXml.ts'
+import { parseOrderXml, serializeOrderXml, text } from '../orderXml.ts'
 import type { ElementValue } from '../orderXml.ts'
 import type { GpcContainer } from '../container.ts'
 import { planOrderBlock } from '../orderBlock.ts'
@@ -41,7 +41,7 @@ const requires = (list: string, section: string, names: string[], logical = 'Or'
     <Id>1</Id><LogicalConnector>${logical}</LogicalConnector><SectionLogicalConnector>And</SectionLogicalConnector></Precondition>`
 
 interface Opt { name: string; pre?: string; imp?: string; def?: number }
-const section = (name: string, mode: string, opts: Opt[], extra: { traits?: string[]; special?: string } = {}) => `
+const section = (name: string, mode: string, opts: Opt[], extra: { traits?: string[]; special?: string; sub?: boolean } = {}) => `
   <Section><LongName>${name}</LongName><SectionSpecialFunction>${extra.special ?? 'None'}</SectionSpecialFunction>
     <MandatoryComment>false</MandatoryComment><Description />
     <Selection><SelectionMode>${mode}</SelectionMode></Selection>
@@ -50,7 +50,7 @@ const section = (name: string, mode: string, opts: Opt[], extra: { traits?: stri
         <Implications>${o.imp ?? ''}</Implications><Step>1</Step><DefaultAmount>${o.def ?? 0}</DefaultAmount><TechCategory>0</TechCategory></SectionArticle>`).join('')}
     </Articles>
     <SAPCharacterTraitNames>${(extra.traits ?? ['']).map(t => t ? `<string>${t}</string>` : '<string />').join('')}</SAPCharacterTraitNames>
-    <IsSubconfiguration>false</IsSubconfiguration></Section>`
+    <IsSubconfiguration>${extra.sub ? 'true' : 'false'}</IsSubconfiguration></Section>`
 
 const computerSections = (list: string) =>
   section('Computer', 'ExactlyOne', [{ name: 'Workstation L' }, { name: 'Workstation S' }]) +
@@ -75,6 +75,22 @@ const RIGA = `
     ], { traits: ['A300_GOM_CAMERAFRAME'] })}
     ${computerSections('RIGA')}
     ${section('Software License', 'OneOrMore', [{ name: 'Driver X' }, { name: 'Driver Y' }], { special: 'ReadOnly' })}
+    ${section('Recommended Probe', 'ExactlyOne', [
+      { name: 'Probe PM8', def: 1, pre: requires('RIGA', 'Camera Frame', ['Frame 800 for X', 'Frame 800 for Y']) },
+      { name: 'I want a different one!' },
+    ])}
+    ${section('Different Probe', 'ExactlyOne', [
+      { name: 'Probe PM3', pre: requires('RIGA', 'Recommended Probe', ['I want a different one!']) },
+      { name: 'None -', pre: requires('RIGA', 'Recommended Probe', ['I want a different one!']) },
+    ], { special: 'HideArticleSectionIfNoArticle' })}
+    ${section('Training', 'OneOrMore', [{ name: 'Rig Training', def: 1 }], { sub: true })}
+    ${section('Maintenance', 'OneOrMore', [{ name: 'Rig SMA' }], { sub: true, special: 'HideAlwaysAutoSelectMaxQuantity' })}
+  </Sections></DependentList>
+  <DependentList><DependentListName>RTRN</DependentListName><Sections>
+    ${section('Course', 'OneOrMore', [{ name: 'Rig eLearning', def: 1 }])}
+  </Sections></DependentList>
+  <DependentList><DependentListName>RSMA</DependentListName><Sections>
+    ${section('Cover', 'OneOrMore', [{ name: 'Inc. SMA for Driver X', def: 1 }])}
   </Sections></DependentList>`
 
 const RIGF = `
@@ -102,6 +118,8 @@ const ARTICLES: Array<[string, string, number]> = [
   ['Driver X', 'S-DRVX', 1000], ['Driver Y', 'S-DRVY', 1000],
   ['Scanner Q', 'S-SCANQ', 20000],
   ['Marker Kit', 'S-MARK', 50],
+  ['Probe PM8', 'S-PM8', 300], ['Probe PM3', 'S-PM3', 300], ['I want a different one!', '', 0], ['None -', '', 0],
+  ['Rig eLearning', 'S-ELRN', 800], ['Inc. SMA for Driver X', 'S-ISMA', 100],
 ]
 
 const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
@@ -112,6 +130,9 @@ const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
     <ConfigurationItem><GroupLevel1>System</GroupLevel1><Name>Rig Adjustable</Name><WorksheetArticleFilter>RIGA</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>false</AsSubItemOnly></ConfigurationItem>
     <ConfigurationItem><GroupLevel1>System</GroupLevel1><Name>Rig Fixed</Name><WorksheetArticleFilter>RIGF</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>false</AsSubItemOnly></ConfigurationItem>
     <ConfigurationItem><GroupLevel1>System</GroupLevel1><Name>Scanner</Name><WorksheetArticleFilter>SCAN</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>false</AsSubItemOnly></ConfigurationItem>
+    <ConfigurationItem><GroupLevel1>Training</GroupLevel1><Name>Rig Training</Name><WorksheetArticleFilter>RTRN</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>true</AsSubItemOnly></ConfigurationItem>
+    <ConfigurationItem><GroupLevel1>SMA</GroupLevel1><Name>Rig SMA</Name><WorksheetArticleFilter>RSMA</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>true</AsSubItemOnly>
+      <Question1>Please enter E-Mail address from License User</Question1><Question2>Please enter Name from License User</Question2></ConfigurationItem>
     <ConfigurationItem><GroupLevel1>Services</GroupLevel1><Name>Spare Parts</Name><WorksheetArticleFilter>&lt;Articles&gt;spare</WorksheetArticleFilter><ItemType>FreeList</ItemType></ConfigurationItem>
   </ConfigurationItems></ConfigurationItemsData>
   <DependentListsData><DependentLists>${RIGA}${RIGF}${SCAN}</DependentLists></DependentListsData>
@@ -188,14 +209,35 @@ describe('a sales order becomes the system it describes', () => {
       'Computer Case': ['Rack Design'],
       'Case 19"': ['Case 19 (in-sys)'],
       'Software License': ['Driver X'],
+      // Not on the order: the recommended probe goes, and the list it opens is answered "None".
+      'Recommended Probe': ['I want a different one!'],
+      'Different Probe': ['None -'],
+      // Training was a default the order did not buy; the SMA is mandatory and stays.
+      Maintenance: ['Rig SMA'],
     })
     // The licence came with the camera, so the block's licence line is not added again;
     // the marker kit is not an option of the system and stays a line of its own.
     expect(report.added).toContain('Driver X: already in 1 Rig Adjustable')
     expect(report.added).toContain('1 × Marker Kit')
     expect(replayOrder(doc, config())).toEqual([])
-    // 5000 camera + 700 frame + 3000 workstation + 400 rack design + 1000 driver, + 50 markers
-    expect(text(doc.root, 'Msrp')).toBe('10150')
+    expect(report.added[0]).toContain('left out, not on the order: Rig Training, Probe PM8')
+    // 5000 camera + 700 frame + 3000 workstation + 400 rack design + 1000 driver + 100 in-system SMA, + 50 markers
+    expect(text(doc.root, 'Msrp')).toBe('10250')
+    // The SMA asks who the licences are for; Trilion's licensing desk answers.
+    const xml = new TextDecoder().decode(serializeOrderXml(doc))
+    expect(xml).toContain('<Reply1>licensing@trilion.com</Reply1>')
+    expect(xml).toContain('<Reply2>Trilion Licensing</Reply2>')
+  })
+
+  it('keeps Training when the order sells what is in it', () => {
+    const doc = parseOrderXml(new TextEncoder().encode(ORDER))
+    const order = [...RIG_ORDER, article('Rig eLearning', 'S-ELRN')]
+    const report = applyOrderBlockItems(doc, pdb(), planOrderBlock(block(order), pdb()))
+    expect(report.added[0]).toContain("GPC's rules added Driver X, Rig Training, Rig SMA")
+    expect(report.added[0]).not.toContain('left out, not on the order: Rig Training')
+    // The eLearning is the order's own line, found inside Training, not something the rules added.
+    expect(report.added[0]).not.toContain('Rig eLearning (in')
+    expect(report.added).toContain('Rig eLearning: already in 1 Rig Adjustable')
   })
 
   it('takes a fixed base to the fixed system', () => {

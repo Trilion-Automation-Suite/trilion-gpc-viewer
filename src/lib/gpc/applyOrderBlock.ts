@@ -19,6 +19,7 @@ import { assembleSystem } from './systemAssembly.ts'
 import type { ArticleLine } from './systemAssembly.ts'
 import { currencyRow, readPdbConfig } from './blankOrder.ts'
 import { addLicense } from './licenses.ts'
+import { DEFAULT_LICENSE_USER } from './licenseUser.ts'
 import { addSmaExtension } from './sma.ts'
 import type { OrderBlockPlan } from './orderBlock.ts'
 
@@ -99,7 +100,8 @@ export function applyOrderBlockItems(
         for (const name of result.contains) if (!inSystem.has(name)) inSystem.set(name, `${result.no} ${result.itemName}`)
         report.added.push(
           `${result.no} ${result.itemName}, configured from ${result.placed.length} line${result.placed.length === 1 ? '' : 's'}` +
-          (result.addedByRules.length ? `; GPC's rules added ${result.addedByRules.join(', ')}` : '')
+          (result.addedByRules.length ? `; GPC's rules added ${result.addedByRules.join(', ')}` : '') +
+          (result.removedDefaults.length ? `; left out, not on the order: ${result.removedDefaults.join(', ')}` : '')
         )
         for (const r of result.refused) {
           report.notes.push(`${describe(r.index)} added as its own line: ${r.reason}`)
@@ -145,8 +147,8 @@ export function applyOrderBlockItems(
         report.added.push(`${resolved.amount} × ${resolved.articleName}`)
       } else if (resolved.kind === 'license') {
         addLicense(order, pdb, resolved.option, {
-          userZeissId: resolved.userEmail,
-          userName: resolved.userName,
+          userZeissId: resolved.userEmail || DEFAULT_LICENSE_USER.email,
+          userName: resolved.userName || DEFAULT_LICENSE_USER.name,
           ...(priceList ? { priceListName: priceList } : {}),
         })
         report.added.push(`Licence ${resolved.option.articleName}`)
@@ -156,8 +158,8 @@ export function applyOrderBlockItems(
           endOldContract: resolved.item.endOldContract,
           startNewContract: resolved.item.startNewContract,
           months: resolved.item.months,
-          licenseUserEmail: resolved.item.licenseUserEmail,
-          licenseUserName: resolved.item.licenseUserName,
+          licenseUserEmail: resolved.item.licenseUserEmail || DEFAULT_LICENSE_USER.email,
+          licenseUserName: resolved.item.licenseUserName || DEFAULT_LICENSE_USER.name,
         })
         report.added.push(`SMA on ${resolved.item.dongleId}: ${resolved.articleNames.join(', ')}`)
       }

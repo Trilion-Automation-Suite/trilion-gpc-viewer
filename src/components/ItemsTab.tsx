@@ -8,6 +8,7 @@ import { SystemEditorModal } from './SystemEditorModal.tsx'
 import type { SystemEditor } from '../lib/gpc/dependentListEngine.ts'
 import type { BuildableItem } from '../lib/gpc/dependentList.ts'
 import { searchEntries } from '../lib/productSearch.ts'
+import { DEFAULT_LICENSE_USER } from '../lib/gpc/licenseUser.ts'
 import type { GpcContainer } from '../lib/gpc/container.ts'
 import type { OrderBlockPlan } from '../lib/gpc/orderBlock.ts'
 import {
@@ -121,8 +122,8 @@ function SearchProductModal({
   const [endOldMonth, setEndOldMonth] = useState(defaultContractEndMonth)
   const [startMonth, setStartMonth] = useState('')
   const [months, setMonths] = useState(MINIMUM_CONTRACT_MONTHS)
-  const [licenseUserEmail, setLicenseUserEmail] = useState('licensing@trilion.com')
-  const [licenseUserName, setLicenseUserName] = useState('Trilion Licensing')
+  const [licenseUserEmail, setLicenseUserEmail] = useState<string>(DEFAULT_LICENSE_USER.email)
+  const [licenseUserName, setLicenseUserName] = useState<string>(DEFAULT_LICENSE_USER.name)
 
 
   const searchable = useMemo(
@@ -319,8 +320,8 @@ function SearchLicenseModal({
 }) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<LicenseOption | null>(null)
-  const [userZeissId, setUserZeissId] = useState('licensing@trilion.com')
-  const [userName, setUserName] = useState('Trilion Licensing')
+  const [userZeissId, setUserZeissId] = useState<string>(DEFAULT_LICENSE_USER.email)
+  const [userName, setUserName] = useState<string>(DEFAULT_LICENSE_USER.name)
 
   const filtered = query.trim().length < 2
     ? []

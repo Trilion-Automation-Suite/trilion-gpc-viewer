@@ -177,6 +177,11 @@ export interface AssemblyResult {
   refused: Array<{ index: number; reason: string }>
   /** Options the rules added that the order did not list — defaults, software, the in-system SMA. */
   addedByRules: string[]
+  /**
+   * What GPC's defaults put in that the order does not list, taken out again:
+   * a recommended touch probe, a Training sub-configuration, a tripod.
+   */
+  removedDefaults: string[]
   /** Sections the configurator will show as incomplete. */
   incomplete: string[]
   /**
@@ -276,20 +281,41 @@ export function assembleSystem(
     // A variant stands in for the line: whatever the section holds is the order's.
     if (variant.has(i)) for (const o of sec.options) if (o.amount > 0) listed.add(`${sec.name}\u0000${o.name}`)
   }
+  // The order decides what the system contains. GPC's defaults are a
+  // salesperson's starting point — a probe to match the volume, Training, a
+  // tripod to hold the calibration object — and an order that does not list
+  // them did not sell them. So a priced default the order does not name is
+  // taken out wherever its section offers a way out ("None -", or "I want a
+  // different one!" and then "None -"); a default with no way out is part of
+  // the system and stays. The same for a sub-configuration the rules added
+  // that no line of the order belongs to.
+  const removedDefaults = dropUnorderedDefaults(editor, catalog, listed, lines)
+
   // Only what costs something or is a line of its own is worth reporting:
   // selectors like "None -" and "New system" are how the rules keep state.
   const priced = new Set<string>()
+  const childName = new Map<string, string>()
   for (const l of editor.view()) {
+    childName.set(l.no, l.itemName)
     for (const sec of l.sections) {
       for (const o of sec.options) {
         if (sec.isSubconfig || (o.msrp !== null && o.msrp !== '0')) priced.add(`${l.no}\u0000${sec.name}\u0000${o.name}`)
       }
     }
   }
+  // A line of the order that turned up inside a sub-configuration (an
+  // eLearning inside Training) is the order's, not the rules'.
+  const ordered = new Set<string>()
+  for (const l of lines) {
+    ordered.add(l.articleName)
+    if (l.name) ordered.add(l.name)
+  }
   const addedByRules = editor
     .changes()
-    .filter((c) => c.to > 0 && !listed.has(`${c.section}\u0000${c.option}`) && priced.has(`${c.no}\u0000${c.section}\u0000${c.option}`))
-    .map((c) => (c.no === no ? c.option : `${c.option} (${c.no})`))
+    .filter((c) => c.to > 0 && !listed.has(`${c.section}\u0000${c.option}`) && !ordered.has(c.option) &&
+      priced.has(`${c.no}\u0000${c.section}\u0000${c.option}`))
+    // By sub-configuration name, not number: numbers move when one is removed.
+    .map((c) => (c.no === no ? c.option : `${c.option} (in ${childName.get(c.no) ?? 'a sub-configuration'})`))
 
   const incomplete = editor.incomplete().map((i) => `${i.no} ${i.section}`)
   const contains = new Set<string>()
@@ -297,5 +323,75 @@ export function assembleSystem(
     for (const sec of l.sections) for (const o of sec.options) if (o.amount > 0) contains.add(o.name)
   }
   editor.commit()
-  return { no, itemName: match.itemName, placed, refused, addedByRules, incomplete, contains }
+  return { no, itemName: match.itemName, placed, refused, addedByRules, removedDefaults, incomplete, contains }
+}
+
+const WAY_OUT = /^none\b|different one/i
+const NONE = /^none\b/i
+
+function isPriced(msrp: string | null): boolean {
+  return msrp !== null && msrp !== '' && msrp !== '0'
+}
+
+/** Takes out what GPC's defaults added and the order did not list. Returns what went. */
+function dropUnorderedDefaults(
+  editor: SystemEditor,
+  catalog: EngineCatalog,
+  listed: Set<string>,
+  lines: ArticleLine[]
+): string[] {
+  const removed: string[] = []
+  const root = editor.root
+  const tryPick = (si: number, oi: number, amount: number): boolean => {
+    try {
+      editor.pick(si, oi, amount)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  // Sub-configurations the rules added: kept only when a line of the order is
+  // one of their options (an eLearning inside Training).
+  for (const name of [...editor.addedSubconfigs]) {
+    const child = root.subconfigs.find((c) => c.itemName === name)
+    if (!child || !('sectionDefs' in child)) continue
+    const wanted = lines.some((line) => hitsIn(catalog, child.sectionDefs, line).length > 0)
+    if (wanted) continue
+    const si = root.sections.findIndex((sec, i) => root.sectionDefs[i].isSubconfig && sec.options[0]?.name === name)
+    if (si < 0) continue
+    const opt = root.sections[si].options[0]
+    // A mandatory one — the in-system SMA — is set by the section itself and refuses.
+    if (opt.mode === 'Implication' || opt.mode === 'SectionSpecialFunction') continue
+    if (tryPick(si, 0, 0) && opt.amount === 0) removed.push(name)
+  }
+
+  // Priced defaults, then whatever section a "different one" opened.
+  for (let pass = 0; pass < 3; pass++) {
+    let changed = false
+    root.sections.forEach((sec, si) => {
+      if (root.sectionDefs[si].isSubconfig || sec.isHidden) return
+      for (const o of sec.options) {
+        if (o.amount === 0 || listed.has(`${sec.name}\u0000${o.name}`)) continue
+        if (o.mode !== 'Default') continue
+        if (!isPriced(o.msrp)) continue
+        const out = sec.options.findIndex((x) => x !== o && !x.isDisabled && WAY_OUT.test(x.name))
+        if (out >= 0 && tryPick(si, out, 1)) {
+          removed.push(o.name)
+          changed = true
+        }
+      }
+    })
+    // A section left waiting for a pick the order never made — the probe list
+    // "I want a different one!" opens — is answered with its "None".
+    root.sections.forEach((sec, si) => {
+      if (root.sectionDefs[si].isSubconfig || sec.isHidden) return
+      if (sec.options.some((o) => o.amount > 0)) return
+      if (sec.options.some((o) => listed.has(`${sec.name}\u0000${o.name}`))) return
+      const none = sec.options.findIndex((x) => !x.isDisabled && NONE.test(x.name))
+      if (none >= 0 && tryPick(si, none, 1)) changed = true
+    })
+    if (!changed) break
+  }
+  return removed
 }
