@@ -133,6 +133,19 @@ describe('convertOrderToCatalog: the dependent-list mirror', () => {
     expect(report.dependentLists.optionsAdded).toEqual(['DONGLE/Coverage/New Option'])
   })
 
+  it('names a pick the target catalog withdrew, so a replacement can be chosen', () => {
+    // A picked option that the new catalog no longer has (a computer model that
+    // was withdrawn) is the one GPC's own import reports as "Missing article".
+    const order = addDependentListSupport(parseOrderXml(new TextEncoder().encode(ORDER)), V1, {
+      dongleId: 'D-1',
+      selections: [{ sectionName: 'Coverage', articleName: 'Retired Option', amount: '1', amountMode: 'UserChoice' as const }],
+    })
+    const report = convertOrderToCatalog(order, V2)
+    expect(report.dependentLists.picksLost).toEqual(['Coverage: Retired Option'])
+    // Unpicked options that went are not the operator's business.
+    expect(convertOrderToCatalog(onV1(), V2).dependentLists.picksLost).toEqual([])
+  })
+
   it('keeps the user\'s own selection on an option the target still has', () => {
     const order = onV1()
     convertOrderToCatalog(order, V2)

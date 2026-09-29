@@ -211,6 +211,7 @@ export function needsReview(report: ConversionReport): boolean {
     report.dependentListsNotConverted.length > 0 ||
     report.configurationItems.unmatched.length > 0 ||
     report.totalsLeft.length > 0 ||
-    (report.rulesFailed?.length ?? 0) > 0
+    (report.rulesFailed?.length ?? 0) > 0 ||
+    (report.dependentLists.picksLost?.length ?? 0) > 0
   )
 }

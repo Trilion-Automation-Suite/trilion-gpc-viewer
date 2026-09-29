@@ -140,6 +140,12 @@ export function PdbSwitcher({
               disagrees with the catalog, so this is required, not cosmetic.
             </p>
           )}
+          {(report.dependentLists.picksLost?.length ?? 0) > 0 && (
+            <p className="pdb-report-warn">
+              No longer in {report.targetCatalog}, so the pick was dropped — choose a replacement in
+              Configure: {report.dependentLists.picksLost.join('; ')}.
+            </p>
+          )}
           {(report.rulesApplied?.length ?? 0) > 0 && (
             <p className="pdb-report-note">
               GPC's rules on the new catalog changed: {report.rulesApplied.map((r) => r.replace(/^[^:]*: /, '')).join('; ')}.

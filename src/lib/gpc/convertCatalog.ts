@@ -80,6 +80,13 @@ export interface ConversionReport {
     sectionsRemoved: string[]
     optionsAdded: string[]
     optionsRemoved: string[]
+    /**
+     * Options the operator picked that the target catalog no longer has, as
+     * "Section: option" -- a computer model that was withdrawn. Their section is
+     * left for a new pick; GPC's own import reports the same as "Missing article".
+     * Implied and default picks are not listed: the rules re-derive those.
+     */
+    picksLost: string[]
   }
   /**
    * Dependent-list screens that could NOT be reconciled, because the target
@@ -263,7 +270,7 @@ export function convertOrderToCatalog(
     rulesFailed: [],
     totalsLeft: [],
     dependentLists: {
-      reconciled: 0, sectionsAdded: [], sectionsRemoved: [], optionsAdded: [], optionsRemoved: [],
+      reconciled: 0, sectionsAdded: [], sectionsRemoved: [], optionsAdded: [], optionsRemoved: [], picksLost: [],
     },
     dependentListsNotConverted: [],
     issues: [],
@@ -517,9 +524,12 @@ function reconcileSection(
       options.push({ name: 'SectionArticleScreenData', value: newOption(catalogArticle, name, ctx) })
     }
   }
-  for (const name of priorOptions.keys()) {
+  for (const [name, option] of priorOptions) {
     if (!seen.has(name)) {
       ctx.report.dependentLists.optionsRemoved.push(`${listName}/${sectionName}/${name}`)
+      if (text(option, 'Amount') !== '0' && text(option, 'AmountMode') === 'UserChoice') {
+        ctx.report.dependentLists.picksLost.push(`${sectionName}: ${name}`)
+      }
     }
   }
 
