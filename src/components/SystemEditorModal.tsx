@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ListView, OptionView, SectionView, SystemEditor } from '../lib/gpc/dependentListEngine.ts'
 import { NeedsGpcError, PickError } from '../lib/gpc/dependentListEngine.ts'
 import type { Dec } from '../lib/gpc/decimal.ts'
@@ -133,6 +133,60 @@ function OptionRow({
   )
 }
 
+/**
+ * A section's comment — training participants, an old dongle ID. GPC offers the
+ * box on every section and stars the mandatory ones; here it is always open on
+ * a mandatory or option-less section and one click away on the rest.
+ */
+function CommentField({
+  list,
+  section,
+  onComment,
+}: {
+  list: ListView
+  section: SectionView
+  onComment: (no: string, sectionIndex: number, value: string) => void
+}) {
+  const c = section.comment
+  // The editor stores the comment trimmed; the box keeps what is being typed.
+  const [draft, setDraft] = useState(c.value)
+  const [open, setOpen] = useState(false)
+  useEffect(() => { if (c.value !== draft.trim()) setDraft(c.value) }, [c.value]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (!c.mandatory && !c.value && !c.original && !open && section.options.length > 0) {
+    return (
+      <button type="button" className="sysed-comment-add" onClick={() => setOpen(true)}>
+        + Add comment
+      </button>
+    )
+  }
+  const id = `sysed-comment-${list.no}-${section.index}`
+  const hint = c.dateFormat ? `Date, ${c.dateFormat}` : c.formats.length > 0 ? `Format: ${c.formats.join(' or ')}` : null
+  return (
+    <div className={'sysed-comment' + (c.valid ? '' : ' sysed-comment--invalid')}>
+      <label htmlFor={id} className="sysed-comment-label">
+        Comment{c.mandatory && <span className="sysed-comment-required" title="Required by the configurator"> *</span>}
+      </label>
+      <textarea
+        id={id}
+        className="sysed-comment-input"
+        rows={c.dateFormat ? 1 : 3}
+        value={draft}
+        placeholder={c.dateFormat ?? (c.mandatory ? 'Required' : '')}
+        onChange={e => {
+          setDraft(e.target.value)
+          onComment(list.no, section.index, e.target.value)
+        }}
+      />
+      {hint && <p className="sysed-comment-hint">{hint}</p>}
+      {!c.valid && (
+        <p className="sysed-comment-error" role="alert">
+          {c.value ? 'Does not match the format the configurator expects.' : 'The configurator requires this comment.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function SectionBlock({
   list,
   section,
@@ -140,6 +194,7 @@ function SectionBlock({
   filter,
   editable,
   onPick,
+  onComment,
 }: {
   list: ListView
   section: SectionView
@@ -147,24 +202,31 @@ function SectionBlock({
   filter: string
   editable: boolean
   onPick: (sectionIndex: number, optionIndex: number, amount: number) => void
+  onComment: (no: string, sectionIndex: number, value: string) => void
 }) {
   const options = section.options.filter(o => {
     if (!showUnavailable && (o.hidden || o.disabled) && o.original === 0) return false
     if (filter && !o.name.toLowerCase().includes(filter) && !section.name.toLowerCase().includes(filter)) return false
     return true
   })
-  if (options.length === 0) return null
-  const hasChange = section.options.some(o => o.amount !== o.original)
+  // A section with no options exists for its comment alone (Training Participants, an old dongle ID).
+  const commentOnly = section.options.length === 0
+  const commentShown = commentOnly && (!filter || section.name.toLowerCase().includes(filter))
+  if (options.length === 0 && !commentShown) return null
+  const hasChange = section.options.some(o => o.amount !== o.original) || section.comment.value !== section.comment.original
+  const needs = section.comment.valid ? 'needs a pick' : 'needs a comment'
   return (
     <section className={'sysed-section' + (section.complete ? '' : ' sysed-section--incomplete')}>
       <header className="sysed-section-head">
         <h4>{section.name}</h4>
-        <span className="sysed-section-mode">{section.isSubconfig ? 'sub-configuration' : selectionLabel(section)}</span>
-        {!section.complete && <em className="sysed-badge-incomplete">needs a pick</em>}
+        {!commentOnly && (
+          <span className="sysed-section-mode">{section.isSubconfig ? 'sub-configuration' : selectionLabel(section)}</span>
+        )}
+        {!section.complete && <em className="sysed-badge-incomplete">{needs}</em>}
         {hasChange && <em className="sysed-badge-changed">changed</em>}
       </header>
       {section.description && <p className="sysed-section-note">{section.description}</p>}
-      <ul className="sysed-options">
+      {!commentOnly && <ul className="sysed-options">
         {options.map(o => (
           <OptionRow
             key={o.index}
@@ -174,7 +236,8 @@ function SectionBlock({
             onPick={amount => (editable ? onPick(section.index, o.index, amount) : undefined)}
           />
         ))}
-      </ul>
+      </ul>}
+      {!section.hidden && <CommentField list={list} section={section} onComment={onComment} />}
       {section.overridden.length > 0 && (
         <ul className="sysed-overridden">
           {section.overridden.map((line, i) => <li key={i}>{line}</li>)}
@@ -205,7 +268,10 @@ export function SystemEditorModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const changes = useMemo(() => editor.changes(), [editor, revision])
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  const commentChanges = useMemo(() => editor.commentChanges(), [editor, revision])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const incomplete = useMemo(() => editor.incomplete(), [editor, revision])
+  const changeCount = changes.length + commentChanges.length
   const replayDiffs = useMemo(() => editor.replayDiffs(), [editor])
   const root = lists[0]
 
@@ -216,6 +282,16 @@ export function SystemEditorModal({
     } catch (err) {
       if (err instanceof PickError || err instanceof NeedsGpcError) setError(err.message)
       else setError(err instanceof Error ? err.message : String(err))
+    }
+    setRevision(r => r + 1)
+  }
+
+  function comment(no: string, sectionIndex: number, value: string) {
+    setError(null)
+    try {
+      editor.setComment(no, sectionIndex, value)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
     }
     setRevision(r => r + 1)
   }
@@ -300,6 +376,7 @@ export function SystemEditorModal({
                     filter={needle}
                     editable={li === 0}
                     onPick={pick}
+                    onComment={comment}
                   />
                 ))}
             </div>
@@ -307,9 +384,9 @@ export function SystemEditorModal({
         </div>
 
         <footer className="sysed-foot">
-          {changes.length > 0 && (
+          {changeCount > 0 && (
             <details className="sysed-changes" open>
-              <summary>{changes.length} change{changes.length === 1 ? '' : 's'}</summary>
+              <summary>{changeCount} change{changeCount === 1 ? '' : 's'}</summary>
               <ul>
                 {changes.map((c, i) => (
                   <li key={i} className={c.to > c.from ? 'sysed-change--added' : 'sysed-change--removed'}>
@@ -317,6 +394,12 @@ export function SystemEditorModal({
                     {c.to > 1 || c.from > 1 ? ` (${c.from} → ${c.to})` : ''}
                     <span className="sysed-change-section"> · {c.section}</span>
                     {c.mode !== 'UserChoice' && <em> · automatic</em>}
+                  </li>
+                ))}
+                {commentChanges.map((c, i) => (
+                  <li key={`c${i}`} className="sysed-change--comment">
+                    ✎ comment {c.to === '' ? 'cleared' : c.from === '' ? 'added' : 'changed'}
+                    <span className="sysed-change-section"> · {c.section}</span>
                   </li>
                 ))}
                 {editor.removedSubconfigs.map(name => (
@@ -333,8 +416,8 @@ export function SystemEditorModal({
           )}
           <div className="modal-actions">
             <button type="button" className="modal-btn modal-btn-cancel" onClick={onCancel}>Cancel</button>
-            <button type="button" className="modal-btn modal-btn-add" disabled={changes.length === 0} onClick={apply}>
-              Apply {changes.length > 0 ? `${changes.length} change${changes.length === 1 ? '' : 's'}` : ''}
+            <button type="button" className="modal-btn modal-btn-add" disabled={changeCount === 0} onClick={apply}>
+              Apply {changeCount > 0 ? `${changeCount} change${changeCount === 1 ? '' : 's'}` : ''}
             </button>
           </div>
         </footer>

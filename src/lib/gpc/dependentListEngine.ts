@@ -32,7 +32,7 @@
  * with `NeedsGpcError`.
  */
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
-import { member, text } from './orderXml.ts'
+import { member, setMember, text } from './orderXml.ts'
 import type { Dec } from './decimal.ts'
 import { add, compare, divide, formatDecimal, fromInt, isZero, multiply, parseDecimal, parseDecimalOrNull, subtract } from './decimal.ts'
 
@@ -280,6 +280,8 @@ export class Section {
   readonly longName: string
   readonly special: string
   readonly mandatoryComment: boolean
+  /** Regexes, or one date pattern such as `d.m.y`; a comment must match one of them. */
+  readonly commentFormats: string[]
   readonly description: string
   readonly additionalChoiceTitle: string | null
   readonly selection: Selection
@@ -290,6 +292,7 @@ export class Section {
     this.longName = str(e, 'LongName') ?? ''
     this.special = str(e, 'SectionSpecialFunction') ?? 'None'
     this.mandatoryComment = bool(e, 'MandatoryComment')
+    this.commentFormats = strings(e, 'CommentFormats').filter((f) => f !== '')
     this.description = (str(e, 'Description') ?? '').trim()
     this.additionalChoiceTitle = str(e, 'AdditionalChoiceTitle')
     this.selection = Selection.parse(sub(e, 'Selection')) ?? new Selection('ExactlyOne')
@@ -468,12 +471,27 @@ export class SectionState {
   isChanged = false
   /** The configurator's "your earlier choice was overridden" notes. */
   overridden: string[] = []
+  /** The section's comment when the file was opened. */
+  readonly originalComment: string
 
   constructor(el: ElementValue, id: number) {
     this.el = el
     this.id = id
     this.name = text(el, 'Name') ?? ''
     this.options = kids(sub(el, 'SectionArticles')).map((a) => new OptionState(a))
+    this.originalComment = this.comment
+  }
+
+  /** The operator's free text on the section — training participants, an old dongle ID. */
+  get comment(): string {
+    return text(this.el, 'Comments') ?? ''
+  }
+
+  /** Trimmed, as the configurator's setter does; a blank comment is left out entirely. */
+  setComment(value: string): void {
+    const v = value.trim()
+    if (v === '') this.clearComments()
+    else setMember(this.el, 'SectionScreenData', 'Comments', { kind: 'text', type: null, value: v })
   }
 
   clearComments(): void {
@@ -1347,9 +1365,66 @@ function setParam(left: Operand, right: Operand, t: OptionState, allowed: number
   }
 }
 
-/** SectionScreenDataValidatorExt.Validate, minus the comment-format check. */
-export function sectionComplete(sd: SectionState): boolean {
+// ── comments ──────────────────────────────────────────────────────────────────
+
+/** GpcFormatsAndTooltips.DateFormatPattern: a format such as `d.m.y` is a date, not a regex. */
+const DATE_FORMAT = /(?:(?:m+|d+|y+)[.\-/]?){3}/i
+
+export function isDateFormat(format: string): boolean {
+  return DATE_FORMAT.test(format)
+}
+
+/** GpcFormatValidator.IsValidDate: day, month and year by the format's order, 1900–2100. */
+function isValidDate(input: string, format: string): boolean {
+  const parts = input.split(/[.\-/]/)
+  const order = format.toLowerCase().split(/[.\-/]/)
+  if (parts.length !== order.length) return false
+  let d = 0
+  let m = 0
+  let y = 0
+  for (let i = 0; i < parts.length; i++) {
+    // int.TryParse: anything that is not a whole number reads as 0.
+    const n = /^\s*[+-]?\d+\s*$/.test(parts[i]) ? parseInt(parts[i], 10) : 0
+    if (order[i].startsWith('d')) d = n
+    else if (order[i].startsWith('m')) m = n
+    else if (order[i].startsWith('y')) y = n
+  }
+  if (d < 1 || m < 1 || m > 12 || y < 1900 || y > 2100) return false
+  const days = [31, (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0)) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  return d <= days[m - 1]
+}
+
+/**
+ * GpcFormatValidator.IsValid: no formats accepts anything, otherwise the comment
+ * must satisfy one. A regex JavaScript cannot compile (.NET-only syntax) is not
+ * held against the operator; the configurator checks it on open.
+ */
+export function commentMatches(input: string, formats: string[]): boolean {
+  if (formats.length === 0) return true
+  return formats.some((f) => {
+    if (isDateFormat(f)) return isValidDate(input, f)
+    try {
+      return new RegExp(f).test(input)
+    } catch {
+      return true
+    }
+  })
+}
+
+/** A mandatory comment is filled in, and any comment matches the section's formats. */
+export function commentValid(sd: SectionState, def: Section): boolean {
+  const blank = sd.comment.trim() === ''
+  if (blank) return !def.mandatoryComment
+  return commentMatches(sd.comment, def.commentFormats)
+}
+
+/**
+ * SectionScreenDataValidatorExt.Validate. The comment check applies when the
+ * catalog section is given.
+ */
+export function sectionComplete(sd: SectionState, def?: Section): boolean {
   if (sd.isHidden || sd.isRestricted) return true
+  if (def && !commentValid(sd, def)) return false
   const live = sd.options.filter((o) => !o.isDisabled && !o.isHidden)
   if (live.length === 0 || live.every((o) => o.isReadOnly)) return true
   const picked = live.filter((o) => o.amount > 0).length
@@ -1521,10 +1596,23 @@ export interface OptionView {
   original: number
 }
 
+export interface CommentView {
+  value: string
+  original: string
+  mandatory: boolean
+  /** Regexes or a date pattern, as the catalog gives them. */
+  formats: string[]
+  /** The date pattern (`d.m.y`) when the comment is a date. */
+  dateFormat: string | null
+  /** Filled in when mandatory and matching a format when given. */
+  valid: boolean
+}
+
 export interface SectionView {
   index: number
   name: string
   description: string
+  comment: CommentView
   mode: SelectionMode
   selection: Selection
   isQuantity: boolean
@@ -1544,6 +1632,13 @@ export interface ListView {
   storedMsrp: string | null
   storedDp: string | null
   sections: SectionView[]
+}
+
+export interface CommentChange {
+  no: string
+  section: string
+  from: string
+  to: string
 }
 
 export interface OptionChange {
@@ -1701,7 +1796,15 @@ export class SystemEditor {
             isSubconfig: def.type === 'SubConfiguration',
             hidden: sd.isHidden || sd.isRestricted,
             readOnly: sd.isReadOnly,
-            complete: sectionComplete(sd),
+            complete: sectionComplete(sd, def),
+            comment: {
+              value: sd.comment,
+              original: sd.originalComment,
+              mandatory: def.mandatoryComment,
+              formats: def.commentFormats,
+              dateFormat: def.commentFormats.length === 1 && isDateFormat(def.commentFormats[0]) ? def.commentFormats[0] : null,
+              valid: commentValid(sd, def),
+            },
             overridden: [...sd.overridden],
             options: sd.options.map((o, j) => ({
               index: j,
@@ -1775,6 +1878,29 @@ export class SystemEditor {
     this.handler.process()
   }
 
+  /**
+   * Sets a section's comment, in any list of the system: comments feed no rule
+   * and no price, so a sub-configuration's comment can be edited here too.
+   */
+  setComment(no: string, sectionIndex: number, value: string): void {
+    const list = [...this.root.tree()].find((l) => l.no === no)
+    const sd = list?.sections[sectionIndex]
+    if (!sd) throw new PickError('No such section.')
+    if (sd.isHidden || sd.isRestricted) throw new PickError(`${sd.name} is not shown by the configurator right now.`)
+    sd.setComment(value)
+  }
+
+  /** Every section whose comment differs from the file as opened. */
+  commentChanges(): CommentChange[] {
+    const out: CommentChange[] = []
+    for (const list of this.root.tree()) {
+      for (const sd of list.sections) {
+        if (sd.comment !== sd.originalComment) out.push({ no: list.no, section: sd.name, from: sd.originalComment, to: sd.comment })
+      }
+    }
+    return out
+  }
+
   /** Every option whose amount differs from the file as opened. */
   changes(): OptionChange[] {
     const out: OptionChange[] = []
@@ -1809,7 +1935,7 @@ export class SystemEditor {
     const out: Array<{ no: string; section: string; selection: Selection; description: string }> = []
     for (const list of this.root.tree()) {
       list.sections.forEach((sd, i) => {
-        if (!sectionComplete(sd)) {
+        if (!sectionComplete(sd, list.sectionDefs[i])) {
           out.push({ no: list.no, section: sd.name, selection: sd.selection, description: list.sectionDefs[i].description })
         }
       })
@@ -1824,6 +1950,10 @@ export class SystemEditor {
    */
   commit(): void {
     this.handler.process() // the configurator runs the list again when the item is saved
+    // Comments are written as they are typed and feed no price. When only a
+    // comment changed, the amounts and totals stay exactly as the file had them,
+    // so a system this editor cannot re-price can still take its participants.
+    if (this.changes().length === 0 && this.addedSubconfigs.length === 0 && this.removedSubconfigs.length === 0) return
     if (this.unpriceable.length > 0) {
       const u = this.unpriceable[0]
       throw new NeedsGpcError(

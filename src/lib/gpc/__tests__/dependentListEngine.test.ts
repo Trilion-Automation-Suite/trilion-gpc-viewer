@@ -212,3 +212,92 @@ describe('dependent-list rules engine', () => {
     expect(new NeedsGpcError('x')).toBeInstanceOf(Error)
   })
 })
+
+describe('section comments', () => {
+  function section(editor: SystemEditor, name: string) {
+    return editor.view()[0].sections.find(x => x.name === name)!
+  }
+  function comment(editor: SystemEditor, name: string, value: string): void {
+    editor.setComment('1', section(editor, name).index, value)
+  }
+  const xml = (doc: Parameters<typeof serializeOrderXml>[0]) => new TextDecoder().decode(serializeOrderXml(doc))
+
+  it('shows a comment-only section when a pick implies it, and needs its mandatory comment', () => {
+    const editor = new SystemEditor(savedRig({ 'V400 medium': 1, 'Probe A': 1 }), config(), '1')
+    expect(section(editor, 'Participants').hidden).toBe(true)
+    expect(editor.incomplete()).toEqual([])
+    click(editor, 'Training', 'Training Day', 1)
+    const s = section(editor, 'Participants')
+    expect(s.hidden).toBe(false)
+    expect(s.comment).toMatchObject({ mandatory: true, value: '', valid: false })
+    expect(editor.incomplete().map(i => i.section)).toEqual(['Participants'])
+    comment(editor, 'Participants', '  Pat Doe, pat@example.com\n')
+    expect(section(editor, 'Participants').comment).toMatchObject({ value: 'Pat Doe, pat@example.com', valid: true })
+    expect(editor.incomplete()).toEqual([])
+  })
+
+  it('writes the comment into the section, where GPC reads it', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1, 'Training Day': 1 })
+    const editor = new SystemEditor(doc, config(), '1')
+    comment(editor, 'Participants', 'pat@example.com')
+    expect(editor.commentChanges()).toEqual([{ no: '1', section: 'Participants', from: '', to: 'pat@example.com' }])
+    editor.commit()
+    expect(xml(doc)).toMatch(/<Name>Participants<\/Name>\s*<SectionArticles \/>\s*<Comments>pat@example\.com<\/Comments>/)
+    // Reopened, the comment is the file's own.
+    const again = new SystemEditor(parse(xml(doc)), config(), '1')
+    expect(section(again, 'Participants').comment).toMatchObject({ value: 'pat@example.com', original: 'pat@example.com', valid: true })
+    expect(again.commentChanges()).toEqual([])
+  })
+
+  it('changes nothing else when only a comment changed', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1, 'Training Day': 1 })
+    const before = xml(doc)
+    const editor = new SystemEditor(doc, config(), '1')
+    comment(editor, 'Participants', 'pat@example.com')
+    editor.commit()
+    expect(xml(doc).replace(/\s*<Comments>pat@example\.com<\/Comments>/, '')).toBe(before)
+  })
+
+  it('takes a comment on a system it cannot re-price', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1, 'Training Day': 1 })
+    const line = (doc.root.members.find(m => m.name === 'DependentListsData')!.value as ElementValue).members[0].value as ElementValue
+    line.members = line.members.map(m => (m.name === 'TotalMsrp' ? { name: m.name, value: { kind: 'text', type: null, value: '9999' } } : m))
+    const editor = new SystemEditor(doc, config(), '1')
+    expect(editor.unpriceable).toHaveLength(1)
+    comment(editor, 'Participants', 'pat@example.com')
+    expect(() => editor.commit()).not.toThrow()
+    expect(text(line, 'TotalMsrp')).toBe('9999')
+  })
+
+  it('clears a blank comment and drops it with the section that hid', () => {
+    const editor = new SystemEditor(savedRig({ 'V400 medium': 1, 'Probe A': 1, 'Training Day': 1 }), config(), '1')
+    comment(editor, 'Participants', 'pat@example.com')
+    comment(editor, 'Participants', '   ')
+    expect(section(editor, 'Participants').comment.value).toBe('')
+    comment(editor, 'Participants', 'pat@example.com')
+    click(editor, 'Training', 'Training Day', 0)
+    expect(section(editor, 'Participants').comment.value).toBe('')
+    expect(() => comment(editor, 'Participants', 'x')).toThrow(PickError)
+  })
+
+  it('checks a comment against the section\'s regex, and leaves an optional one optional', () => {
+    const editor = new SystemEditor(savedRig({ 'V400 medium': 1, 'Probe A': 1 }), config(), '1')
+    expect(section(editor, 'Old Dongle').comment).toMatchObject({ mandatory: false, valid: true })
+    comment(editor, 'Old Dongle', '37510267')
+    expect(section(editor, 'Old Dongle').comment.valid).toBe(false)
+    expect(editor.incomplete().map(i => i.section)).toEqual(['Old Dongle'])
+    comment(editor, 'Old Dongle', '3-7510267')
+    expect(editor.incomplete()).toEqual([])
+  })
+
+  it('reads a d.m.y format as a date, the way GPC validates it', () => {
+    const editor = new SystemEditor(savedRig({ 'V400 medium': 1, 'Probe A': 1 }), config(), '1')
+    expect(section(editor, 'Cover Ends').comment.dateFormat).toBe('d.m.y')
+    const valid = (v: string) => { comment(editor, 'Cover Ends', v); return section(editor, 'Cover Ends').comment.valid }
+    expect(valid('31.12.2026')).toBe(true)
+    expect(valid('29.02.2028')).toBe(true)
+    expect(valid('29.02.2027')).toBe(false)
+    expect(valid('2026-12-31')).toBe(false)
+    expect(valid('31.12.1899')).toBe(false)
+  })
+})

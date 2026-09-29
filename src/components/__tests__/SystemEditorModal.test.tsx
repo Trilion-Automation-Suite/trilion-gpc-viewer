@@ -99,4 +99,42 @@ describe('SystemEditorModal', () => {
     act(() => button(/^Apply/).click())
     expect(text(doc.root, 'Msrp')).toBe('1530')
   })
+
+  it('takes the training participants in the comment box the section exists for', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1, 'Training Day': 1 })
+    const editor = new SystemEditor(doc, config(), '1')
+    let applied = false
+    act(() => root.render(
+      <SystemEditorModal editor={editor} onApply={e => { e.commit(); applied = true }} onCancel={() => {}} />
+    ))
+
+    const participants = section('Participants')
+    expect(participants.textContent).toContain('needs a comment')
+    const box = participants.querySelector<HTMLTextAreaElement>('textarea')!
+    expect(button(/^Apply/).disabled).toBe(true)
+
+    // React listens for the native input event; set the value the way a keystroke does.
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(box, 'pat@example.com ')
+      box.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(box.value).toBe('pat@example.com ')
+    expect(section('Participants').textContent).not.toContain('needs a comment')
+    expect(button(/^Apply 1 change/).disabled).toBe(false)
+    expect(host.querySelector('.sysed-changes')!.textContent).toContain('comment added')
+
+    act(() => button(/^Apply/).click())
+    expect(applied).toBe(true)
+    expect(editor.commentChanges()).toEqual([{ no: '1', section: 'Participants', from: '', to: 'pat@example.com' }])
+  })
+
+  it('keeps optional comment boxes one click away', () => {
+    const editor = new SystemEditor(savedRig({ 'V400 medium': 1, 'Probe A': 1 }), config(), '1')
+    act(() => root.render(<SystemEditorModal editor={editor} onApply={() => {}} onCancel={() => {}} />))
+    // A section with no options is there for its comment, so its box is open.
+    expect(section('Old Dongle').querySelector('textarea')).not.toBeNull()
+    expect(section('Probe').querySelector('textarea')).toBeNull()
+    act(() => [...section('Probe').querySelectorAll('button')].find(b => /Add comment/.test(b.textContent ?? ''))!.click())
+    expect(section('Probe').querySelector('textarea')).not.toBeNull()
+  })
 })

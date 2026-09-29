@@ -12,6 +12,9 @@ import type { GpcContainer } from '../container.ts'
  *  - `Probe` is a radio section whose options are offered only with certain
  *    volumes — the precondition that makes one pick take another away.
  *  - `Lights` is a quantity section.
+ *  - `Participants` has no options, only a mandatory comment, and shows only
+ *    when `Training` asks for it; `Old Dongle` and `Cover Ends` take optional
+ *    comments that must match a regex or a `d.m.y` date.
  *
  * Nothing here is catalog content; names and prices are made up.
  */
@@ -38,8 +41,28 @@ const pre = (section: string, names: string[]) => `
     <Id>1</Id><LogicalConnector>Or</LogicalConnector><SectionLogicalConnector>And</SectionLogicalConnector>
   </Precondition>`
 
+/** An implication that only makes a section visible, as GPC's Training Participants is shown. */
+const show = (section: string) => `
+  <Implication>
+    <DependentListReference>RIG</DependentListReference><SectionReference>${section}</SectionReference>
+    <ArticleLongNames /><ArticleMinValues /><ArticleMaxValues />
+    <Id>3</Id><LogicalConnector>Or</LogicalConnector><SectionLogicalConnector>And</SectionLogicalConnector>
+    <ArticleParams /><ImplicationSpecialFunction>None</ImplicationSpecialFunction><ShowSection>true</ShowSection>
+  </Implication>`
+
 interface Opt { name: string; pre?: string; imps?: string; max?: number; def?: number }
-interface Sec { name: string; mode: string; x?: number; y?: number; opts: Opt[]; note?: string; sub?: boolean }
+interface Sec {
+  name: string
+  mode: string
+  x?: number
+  y?: number
+  opts: Opt[]
+  note?: string
+  sub?: boolean
+  special?: string
+  mandatoryComment?: boolean
+  formats?: string[]
+}
 
 const VOLUME = (name: string, frame: string, base: string): Opt => ({
   name,
@@ -68,6 +91,13 @@ const SECTIONS: Sec[] = [
     ],
   },
   { name: 'Lights', mode: 'OneOrMore', opts: [{ name: 'Light', max: 5 }] },
+  { name: 'Training', mode: 'ZeroOrOne', opts: [{ name: 'Training Day', imps: show('Participants') }] },
+  {
+    name: 'Participants', mode: 'OneOrMore', opts: [], special: 'ShowOnlyIfSetByImplication',
+    mandatoryComment: true, note: 'Name and e-mail of each participant',
+  },
+  { name: 'Old Dongle', mode: 'OneOrMore', opts: [], formats: ['^(\\d{1})-(\\d{7})$'] },
+  { name: 'Cover Ends', mode: 'OneOrMore', opts: [], formats: ['d.m.y'] },
   // Picking this attaches a whole child line; no fixture order carries one.
   { name: 'Care', mode: 'ZeroOrOne', sub: true, opts: [{ name: 'Care Plan' }] },
 ]
@@ -77,6 +107,7 @@ const PRICES: Record<string, [number, number]> = {
   'V900 large': [300, 240], 'Frame S': [50, 40], 'Frame M': [60, 48], 'Frame L': [70, 56],
   'Base S': [1000, 800], 'Base M': [1200, 960], 'Base L': [1500, 1200],
   'Probe A': [30, 24], 'Probe B': [30, 24], 'Probe C': [35, 28], Light: [10, 8], 'Care Plan': [0, 0],
+  'Training Day': [500, 400],
 }
 const RANKING: Record<string, number> = { 'Base S': 1, 'Base M': 2, 'Base L': 3 }
 
@@ -94,7 +125,9 @@ export const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
     <DependentListName>RIG</DependentListName>
     <Sections>${SECTIONS.map(s => `
       <Section>
-        <LongName>${s.name}</LongName><SectionSpecialFunction>None</SectionSpecialFunction><MandatoryComment>false</MandatoryComment>
+        <LongName>${s.name}</LongName><SectionSpecialFunction>${s.special ?? 'None'}</SectionSpecialFunction>
+        <MandatoryComment>${s.mandatoryComment ? 'true' : 'false'}</MandatoryComment>
+        <CommentFormats>${(s.formats ?? []).map(f => `<string>${f}</string>`).join('')}</CommentFormats>
         <Description>${s.note ?? ''}</Description>
         <Selection>${s.x !== undefined ? `<X>${s.x}</X><Y>${s.y}</Y>` : ''}<SelectionMode>${s.mode}</SelectionMode></Selection>
         <Articles>${s.opts.map(o => `
@@ -131,13 +164,13 @@ export function orderWith(picks: Record<string, number>): string {
   const sections = SECTIONS.map(s => `
       <SectionScreenData>
         <Name>${s.name}</Name>
-        <SectionArticles>${s.opts.map(o => `
+        ${s.opts.length === 0 ? '<SectionArticles />' : `<SectionArticles>${s.opts.map(o => `
           <SectionArticleScreenData>
             <Amount>${picks[o.name] ?? 0}</Amount><Step>1</Step>
             <Msrp>${PRICES[o.name][0]}</Msrp><Dp>${PRICES[o.name][1]}</Dp>
             <Name>${o.name}</Name><AmountMode>${picks[o.name] ? 'UserChoice' : 'None'}</AmountMode>
           </SectionArticleScreenData>`).join('')}
-        </SectionArticles>
+        </SectionArticles>`}
       </SectionScreenData>`).join('')
   return `<?xml version="1.0" encoding="utf-8"?>
 <OrderData>
