@@ -82,12 +82,13 @@ export function applyOrderBlockItems(
     const catalog = new EngineCatalog(readPdbConfig(pdb))
     const lines: ArticleLine[] = []
     for (const entry of plan.items) {
-      if (entry.resolved?.kind !== 'article') continue
+      const resolved = entry.resolved
+      if (resolved?.kind !== 'article' && resolved?.kind !== 'license') continue
       const item = entry.item as { sapNr?: string; name?: string }
       lines.push({
         index: entry.index,
-        articleName: entry.resolved.articleName,
-        amount: entry.resolved.amount,
+        articleName: resolved.kind === 'article' ? resolved.articleName : resolved.option.articleName,
+        amount: resolved.kind === 'article' ? resolved.amount : 1,
         ...(item.sapNr ? { sapNr: item.sapNr } : {}),
         ...(item.name ? { name: item.name } : {}),
       })

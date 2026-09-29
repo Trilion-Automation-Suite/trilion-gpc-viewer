@@ -85,6 +85,10 @@ const RIGA = `
     ], { special: 'HideArticleSectionIfNoArticle' })}
     ${section('Training', 'OneOrMore', [{ name: 'Rig Training', def: 1 }], { sub: true })}
     ${section('Maintenance', 'OneOrMore', [{ name: 'Rig SMA' }], { sub: true, special: 'HideAlwaysAutoSelectMaxQuantity' })}
+    ${section('Analysis', 'OneOrMore', [{ name: 'Analysis Pro' }])}
+  </Sections></DependentList>
+  <DependentList><DependentListName>RSW</DependentListName><Sections>
+    ${section('Licences', 'OneOrMore', [{ name: 'Analysis Pro' }])}
   </Sections></DependentList>
   <DependentList><DependentListName>RTRN</DependentListName><Sections>
     ${section('Course', 'OneOrMore', [{ name: 'Rig eLearning', def: 1 }])}
@@ -119,7 +123,7 @@ const ARTICLES: Array<[string, string, number]> = [
   ['Scanner Q', 'S-SCANQ', 20000],
   ['Marker Kit', 'S-MARK', 50],
   ['Probe PM8', 'S-PM8', 300], ['Probe PM3', 'S-PM3', 300], ['I want a different one!', '', 0], ['None -', '', 0],
-  ['Rig eLearning', 'S-ELRN', 800], ['Inc. SMA for Driver X', 'S-ISMA', 100],
+  ['Rig eLearning', 'S-ELRN', 800], ['Analysis Pro', 'S-ANLZ', 2000], ['Inc. SMA for Driver X', 'S-ISMA', 100],
 ]
 
 const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
@@ -133,6 +137,7 @@ const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
     <ConfigurationItem><GroupLevel1>Training</GroupLevel1><Name>Rig Training</Name><WorksheetArticleFilter>RTRN</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>true</AsSubItemOnly></ConfigurationItem>
     <ConfigurationItem><GroupLevel1>SMA</GroupLevel1><Name>Rig SMA</Name><WorksheetArticleFilter>RSMA</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>true</AsSubItemOnly>
       <Question1>Please enter E-Mail address from License User</Question1><Question2>Please enter Name from License User</Question2></ConfigurationItem>
+    <ConfigurationItem><GroupLevel1>Software License</GroupLevel1><Name>Rig Software</Name><WorksheetArticleFilter>RSW</WorksheetArticleFilter><ItemType>DependentList</ItemType><AsSubItemOnly>false</AsSubItemOnly></ConfigurationItem>
     <ConfigurationItem><GroupLevel1>Services</GroupLevel1><Name>Spare Parts</Name><WorksheetArticleFilter>&lt;Articles&gt;spare</WorksheetArticleFilter><ItemType>FreeList</ItemType></ConfigurationItem>
   </ConfigurationItems></ConfigurationItemsData>
   <DependentListsData><DependentLists>${RIGA}${RIGF}${SCAN}</DependentLists></DependentListsData>
@@ -238,6 +243,15 @@ describe('a sales order becomes the system it describes', () => {
     // The eLearning is the order's own line, found inside Training, not something the rules added.
     expect(report.added[0]).not.toContain('Rig eLearning (in')
     expect(report.added).toContain('Rig eLearning: already in 1 Rig Adjustable')
+  })
+
+  it('picks a licence the system offers inside the system, not as a line of its own', () => {
+    const doc = parseOrderXml(new TextEncoder().encode(ORDER))
+    const order = [...RIG_ORDER, { type: 'license' as const, name: 'Analysis Pro' }]
+    const report = applyOrderBlockItems(doc, pdb(), planOrderBlock(block(order), pdb()))
+    expect(picked('1', doc).Analysis).toEqual(['Analysis Pro'])
+    expect(report.added.some((a) => a.startsWith('Licence'))).toBe(false)
+    expect(report.added[0]).toContain('configured from 5 lines')
   })
 
   it('takes a fixed base to the fixed system', () => {

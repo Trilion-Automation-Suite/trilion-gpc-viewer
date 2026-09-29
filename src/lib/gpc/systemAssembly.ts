@@ -356,8 +356,24 @@ function dropUnorderedDefaults(
   for (const name of [...editor.addedSubconfigs]) {
     const child = root.subconfigs.find((c) => c.itemName === name)
     if (!child || !('sectionDefs' in child)) continue
-    const wanted = lines.some((line) => hitsIn(catalog, child.sectionDefs, line).length > 0)
-    if (wanted) continue
+    const wanted = lines.filter((line) => hitsIn(catalog, child.sectionDefs, line).length > 0)
+    if (wanted.length > 0) {
+      // Kept for these lines, so they go inside it: an ARAMIS 1's Training
+      // offers the eLearning but does not pick it by itself.
+      for (const line of wanted) {
+        for (const hit of hitsIn(catalog, child.sectionDefs, line)) {
+          const opt = child.sections[hit.section].options[hit.option]
+          if (opt.amount >= line.amount) break
+          try {
+            editor.pick(hit.section, hit.option, line.amount, child)
+          } catch {
+            continue
+          }
+          if (opt.amount >= line.amount) break
+        }
+      }
+      continue
+    }
     const si = root.sections.findIndex((sec, i) => root.sectionDefs[i].isSubconfig && sec.options[0]?.name === name)
     if (si < 0) continue
     const opt = root.sections[si].options[0]

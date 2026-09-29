@@ -1842,8 +1842,8 @@ export class SystemEditor {
    * do, then sets the amount as a user choice, clears radio and tech-category
    * siblings, and re-runs the whole list so implications follow.
    */
-  pick(sectionIndex: number, optionIndex: number, amount: number): void {
-    const sd = this.root.sections[sectionIndex]
+  pick(sectionIndex: number, optionIndex: number, amount: number, list: ListState = this.root): void {
+    const sd = list.sections[sectionIndex]
     const o = sd?.options[optionIndex]
     if (!o) throw new PickError('No such option.')
     const label = `${sd.name}: ${o.name}`
@@ -1856,13 +1856,13 @@ export class SystemEditor {
     if (amount < 0) throw new PickError('A quantity cannot be negative.')
     if (amount > o.max) throw new PickError(`${label}: at most ${o.max}.`)
     if (amount > 0 && sd.selection.mode === 'MinXMaxY' && amount > maxAllowedAmount(sd, o)) {
-      const def = this.root.sectionDefs[sectionIndex]
+      const def = list.sectionDefs[sectionIndex]
       throw new PickError(
         `'${sd.name}' allows ${sd.selection.minAmount}–${sd.selection.maxAmount} and is full.` +
           (def.description ? ` ${def.description}` : '')
       )
     }
-    for (const s of this.root.sections) s.overridden = []
+    for (const s of list.sections) s.overridden = []
     o.amount = amount
     o.mode = 'UserChoice'
     if (sd.type !== 'SubConfiguration') {

@@ -429,12 +429,16 @@ export function planOrderBlock(
   // Article lines that together name a camera and its base become a system.
   const lines: ArticleLine[] = []
   for (const entry of items) {
-    if (entry.resolved?.kind !== 'article') continue
+    // A licence is an option of the system too — CORRELATE on an ARAMIS 1 is a
+    // pick in its Software License section — so it is placed there rather
+    // than added as a licence line of its own.
+    const resolved = entry.resolved
+    if (resolved?.kind !== 'article' && resolved?.kind !== 'license') continue
     const item = entry.item as ArticleItem
     lines.push({
       index: entry.index,
-      articleName: entry.resolved.articleName,
-      amount: entry.resolved.amount,
+      articleName: resolved.kind === 'article' ? resolved.articleName : resolved.option.articleName,
+      amount: resolved.kind === 'article' ? resolved.amount : 1,
       ...(item.sapNr ? { sapNr: item.sapNr } : {}),
       ...(item.name ? { name: item.name } : {}),
     })
