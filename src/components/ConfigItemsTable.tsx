@@ -562,11 +562,11 @@ function SmaDetailPanel({
                     <td className="sma-mono">{u.dongleId}</td>
                     <td className="right"><PriceCell value={u.msrp} dec={dec} /></td>
                     <td className="right"><PriceCell value={u.dp} dec={dec} /></td>
-                    {/* Sits under CONTRACT END onward; the reason belongs with
-                      * the dates it is derived from, not welded to the price. */}
-                    <td colSpan={isEditing ? 4 : 3} className="sma-upgrade-why">
-                      {u.missingMonths} months of lapsed cover
-                    </td>
+                    {/* The remaining columns are contract dates, which an
+                      * upgrade does not have: it is a one-off charge, not a
+                      * term. Left empty rather than filled with something to
+                      * say. */}
+                    <td colSpan={isEditing ? 4 : 3} />
                   </tr>
                 ))}
               </tbody>

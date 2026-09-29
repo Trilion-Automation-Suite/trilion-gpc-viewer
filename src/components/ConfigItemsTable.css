@@ -693,19 +693,6 @@
   color: var(--text-muted, #666);
 }
 
-.sma-sub-table td.sma-upgrade-why {
-  /*
-   * The cell before it is right-aligned, so without this the number and the
-   * sentence touch and read as one string. Qualified with the table because
-   * the generic cell padding below is more specific and would otherwise win.
-   */
-  padding-left: 18px;
-  font-size: 0.82em;
-  font-style: italic;
-  color: var(--text-muted, #666);
-  white-space: nowrap;
-}
-
 /* Breathing room around every cell of the sub-table, which had none. */
 .sma-sub-table th,
 .sma-sub-table td {
