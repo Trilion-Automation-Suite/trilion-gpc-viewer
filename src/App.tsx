@@ -1,6 +1,6 @@
 declare const __APP_VERSION__: string
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import type { AccountDetails, OrderAdministration, OrderSummary, ParseResult, SmaDetails, TechnicalContact } from './types/order.ts'
 import type { ArticleCatalogEntry } from './lib/parseConfig.ts'
 import { buildArticleCatalog } from './lib/parseConfig.ts'
@@ -16,8 +16,8 @@ import {
 } from './lib/gpc/sma.ts'
 import type { SmaContractEdit } from './lib/gpc/sma.ts'
 import { addLicense, licenseOptionsFromConfig } from './lib/gpc/licenses.ts'
-import { upgradeLines } from './lib/gpc/reentry.ts'
-import type { UpgradeLine } from './lib/gpc/reentry.ts'
+import { upgradeCatalog, upgradeLines } from './lib/gpc/reentry.ts'
+import type { UpgradeCatalog, UpgradeLine } from './lib/gpc/reentry.ts'
 import { applyOrderBlockFields, applyOrderBlockItems } from './lib/gpc/applyOrderBlock.ts'
 import { catalogOfLink, clearOrderLink, readOrderLink } from './lib/orderLink.ts'
 import { isUntitled, orderFileName } from './lib/orderFileName.ts'
@@ -25,7 +25,7 @@ import type { OrderBlockPlan } from './lib/gpc/orderBlock.ts'
 import type { GpcContainer } from './lib/gpc/container.ts'
 import type { LicenseOption } from './lib/gpc/licenses.ts'
 import { readPdbConfig } from './lib/gpc/blankOrder.ts'
-import type { OrderDocument } from './lib/gpc/orderXml.ts'
+import type { ElementValue, OrderDocument } from './lib/gpc/orderXml.ts'
 import { addCatalogArticle } from './lib/gpc/addItem.ts'
 import { EngineCatalog, SystemEditor } from './lib/gpc/dependentListEngine.ts'
 import {
@@ -388,6 +388,21 @@ export function App() {
   }, [state])
 
   /**
+   * The open catalog parsed, cached with the container. A parse of a 47 MB
+   * config.xml takes a quarter of a second; v2.1.0 ran one per render for the
+   * SMA picker and more per SMA row for the upgrade prices, so every keystroke
+   * in an edit field waited on them.
+   */
+  const configCache = useRef<{ key: string; config: ElementValue } | null>(null)
+  const getConfig = useCallback((): ElementValue | null => {
+    const pdb = getPdb()
+    if (!pdb || state.status !== 'loaded' || !state.result.configXml) return null
+    const key = String(state.result.configXml.length)
+    if (configCache.current?.key !== key) configCache.current = { key, config: readPdbConfig(pdb) }
+    return configCache.current.config
+  }, [state, getPdb])
+
+  /**
    * The rules engine's view of the open catalog, cached like the container it
    * is read from: indexing the dependent lists and articles is a walk of the
    * whole product database.
@@ -409,14 +424,14 @@ export function App() {
     try {
       const key = String(state.result.configXml.length)
       if (engineCatalogCache.current?.key !== key) {
-        engineCatalogCache.current = { key, catalog: new EngineCatalog(readPdbConfig(pdb)) }
+        engineCatalogCache.current = { key, catalog: new EngineCatalog(getConfig()!) }
       }
       const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
       // A new line is built on the working copy too, so Cancel leaves no trace of it.
       const itemNo = newItem ? startDependentList(doc, pdb, newItem) : no
       if (!itemNo) return null
       return new SystemEditor(doc, engineCatalogCache.current.catalog, itemNo, {
-        pricer: optionPricer(doc, pdb),
+        pricer: optionPricer(doc, pdb, getConfig() ?? undefined),
         buildSubconfig: (parent, itemName) => addSubConfiguration(doc, pdb, parent, itemName),
         renumber: () => renumberSubConfigurations(doc),
         fresh: newItem !== undefined,
@@ -425,7 +440,7 @@ export function App() {
       setAddItemError(err instanceof Error ? err.message : String(err))
       return null
     }
-  }, [state, getPdb])
+  }, [state, getPdb, getConfig])
 
   /** What the catalog lets an operator start a new line from, for the Add Product search. */
   const buildableCache = useRef<{ key: string; items: BuildableItem[] } | null>(null)
@@ -436,13 +451,13 @@ export function App() {
     const key = String(state.result.configXml.length)
     if (buildableCache.current?.key !== key) {
       try {
-        buildableCache.current = { key, items: buildableItems(readPdbConfig(pdb)) }
+        buildableCache.current = { key, items: buildableItems(getConfig()!) }
       } catch {
         buildableCache.current = { key, items: [] }
       }
     }
     return buildableCache.current.items
-  }, [state, getPdb])
+  }, [state, getPdb, getConfig])
 
   /** Commits an editor's working copy. `commit` throws rather than write a total it cannot price. */
   const handleApplySystem = useCallback((editor: SystemEditor) => {
@@ -510,33 +525,61 @@ export function App() {
    * open and keeps only the totals — so showing it must not change what a save
    * writes. Nothing here touches the document.
    */
+  /**
+   * Upgrade prices per SMA row. The catalog side is prepared once per catalog,
+   * and each row's lines are kept until the row itself changes: typing in
+   * another field re-renders every row, and none of them needs re-pricing.
+   */
+  const upgradeCache = useRef<{ key: string; catalog: UpgradeCatalog; lines: WeakMap<SmaDetails, UpgradeLine[]> } | null>(null)
+  const rawOrderXml = state.status === 'loaded' ? state.result.rawOrderXml : ''
+  const exchangeRate = useMemo(() => exchangeRateOf(rawOrderXml), [rawOrderXml])
+  const priceList = order?.priceList ?? ''
+  const currencyIso = order?.currency || 'USD'
   const getUpgrades = useCallback((sma: SmaDetails): UpgradeLine[] => {
-    if (state.status !== 'loaded' || !order) return []
+    if (state.status !== 'loaded' || !state.result.configXml) return []
     const pdb = getPdb()
     if (!pdb) return []
+    const key = `${state.result.configXml.length}:${priceList}:${currencyIso}:${exchangeRate}`
     try {
-      return upgradeLines(sma, pdb, {
-        priceListName: order.priceList,
-        currencyIso: order.currency || 'USD',
-        exchangeRate: exchangeRateOf(state.result.rawOrderXml),
-      })
+      if (upgradeCache.current?.key !== key) {
+        const catalog = upgradeCache.current?.key.split(':')[0] === key.split(':')[0]
+          ? upgradeCache.current.catalog
+          : upgradeCatalog(pdb)
+        upgradeCache.current = { key, catalog, lines: new WeakMap() }
+      }
+      const cache = upgradeCache.current
+      let lines = cache.lines.get(sma)
+      if (!lines) {
+        lines = upgradeLines(sma, cache.catalog, { priceListName: priceList, currencyIso, exchangeRate })
+        cache.lines.set(sma, lines)
+      }
+      return lines
     } catch {
       return []
     }
-  }, [state, order, getPdb])
+  }, [state, getPdb, priceList, currencyIso, exchangeRate])
 
   /** The agreements `SMA_EXT` offers, for the per-dongle picker. */
+  const smaCatalogCache = useRef<{ key: string; names: string[] } | null>(null)
   const getSmaCatalog = useCallback((): string[] => {
     if (state.status !== 'loaded' || !state.result.configXml) return []
-    try {
-      const config = readPdbConfig(catalogContainer(state.result.configXml))
-      return smaOptions(config, smaListName(config))
-        .filter(o => o.sectionName !== 'License model')
-        .map(o => o.articleName)
-    } catch {
-      return []
+    const key = String(state.result.configXml.length)
+    if (smaCatalogCache.current?.key !== key) {
+      let names: string[] = []
+      try {
+        const config = getConfig()
+        if (config) {
+          names = smaOptions(config, smaListName(config))
+            .filter(o => o.sectionName !== 'License model')
+            .map(o => o.articleName)
+        }
+      } catch {
+        names = []
+      }
+      smaCatalogCache.current = { key, names }
     }
-  }, [state])
+    return smaCatalogCache.current.names
+  }, [state, getConfig])
 
   const handleAddProduct = useCallback((fields: AddProductFields) => {
     if (state.status !== 'loaded' || !state.result.configXml) {

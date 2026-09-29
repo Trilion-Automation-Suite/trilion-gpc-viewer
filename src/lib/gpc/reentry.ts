@@ -23,6 +23,7 @@ import type { SmaDependentList, SmaDetails } from '../../types/order.js'
 import { readPdbConfig } from './blankOrder.ts'
 import { findArticle, priceArticle } from './addItem.ts'
 import { scanDiscounts, scanRoundingRules } from './roundingRules.ts'
+import type { RoundingRule } from './roundingRules.ts'
 import type { ElementValue } from './orderXml.ts'
 import { formatDecimal, multiply, parseDecimal } from './decimal.ts'
 import type { Dec } from './decimal.ts'
@@ -105,18 +106,41 @@ export interface UpgradeInputs {
  * Computed, never written: the file carries only the totals, and a save must
  * leave those exactly as they are.
  */
-export function upgradeLines(sma: SmaDetails, pdb: GpcContainer, inputs: UpgradeInputs): UpgradeLine[] {
+/**
+ * What `upgradeLines` reads from a catalog. Parsing and scanning a product
+ * database costs hundreds of milliseconds, so a caller that prices every SMA
+ * row on every render builds this once per catalog and passes it in.
+ */
+export interface UpgradeCatalog {
+  config: ElementValue
+  factor: number
+  goodwill: number
+  max: number
+  rules: RoundingRule[]
+  discounts: Map<string, Dec>
+}
+
+export function upgradeCatalog(pdb: GpcContainer): UpgradeCatalog {
   const config = readPdbConfig(pdb)
   const configText = new TextDecoder('utf-8').decode(
     pdb.entries.find((e) => e.name === 'config.xml')?.data ?? new Uint8Array()
   )
   const factor = parameter(config, 'ReEntryFactor', 0)
-  const goodwill = parameter(config, 'GoodwillMonths', 0)
-  const max = parameter(config, 'MaxFurtherPurchasePriceInMonth', 36)
+  return {
+    config,
+    factor,
+    goodwill: parameter(config, 'GoodwillMonths', 0),
+    max: parameter(config, 'MaxFurtherPurchasePriceInMonth', 36),
+    // Nothing is priced without a factor, so skip the scans.
+    rules: factor === 0 ? [] : scanRoundingRules(configText),
+    discounts: factor === 0 ? new Map() : scanDiscounts(configText),
+  }
+}
+
+export function upgradeLines(sma: SmaDetails, catalog: GpcContainer | UpgradeCatalog, inputs: UpgradeInputs): UpgradeLine[] {
+  const { config, factor, goodwill, max, rules, discounts } = 'entries' in catalog ? upgradeCatalog(catalog) : catalog
   if (factor === 0) return []
 
-  const rules = scanRoundingRules(configText)
-  const discounts = scanDiscounts(configText)
   const rate = parseDecimal(inputs.exchangeRate || '1')
 
   const out: UpgradeLine[] = []

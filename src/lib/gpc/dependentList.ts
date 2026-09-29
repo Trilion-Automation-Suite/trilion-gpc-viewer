@@ -612,18 +612,24 @@ function optionPrice(ctx: PriceContext, articleName: string): { msrp: Dec; dp: D
  * stored price (the configurator did not write them before 2.9), and trusts it
  * only after it has reproduced the file's own totals.
  */
-export function optionPricer(order: OrderDocument, pdb: GpcContainer): (articleName: string) => { msrp: Dec; dp: Dec } | null {
-  const ctx = priceContext(order, pdb, {})
+/** `config` is the catalog already parsed, when the caller holds one; parsing it again costs a quarter-second. */
+export function optionPricer(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  config?: ElementValue
+): (articleName: string) => { msrp: Dec; dp: Dec } | null {
+  const ctx = priceContext(order, pdb, {}, config)
   return (articleName) => optionPrice(ctx, articleName)
 }
 
 function priceContext(
   order: OrderDocument,
   pdb: GpcContainer,
-  options: { priceListName?: string; exchangeRate?: Dec; currencyIso?: string }
+  options: { priceListName?: string; exchangeRate?: Dec; currencyIso?: string },
+  parsed?: ElementValue
 ): PriceContext {
   const configText = configXml(pdb)
-  const config = readPdbConfig(pdb)
+  const config = parsed ?? readPdbConfig(pdb)
   return {
     config,
     priceListName: options.priceListName ?? ensurePriceList(order, config),
