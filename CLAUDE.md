@@ -100,6 +100,23 @@ it over anything new before shipping.
   caller refuse the empty result — `reconcileMirror` will not write an empty
   mirror.
 
+## Editing a configured system
+
+- **Never set an option's `Amount` by hand.** Picks cascade through the catalog's
+  implications and preconditions; `SystemEditor` (dependentListEngine.ts) re-runs
+  the configurator's own rules after every click. Its check is `replayDiffs()`:
+  on a file GPC saved it must be empty. The private sweep over saved quotes is
+  the evidence — rerun it after touching the engine.
+- **A lone option is forced, not defaulted.** `TryPreselectAmountsIfNoChoice`
+  picks the only available option of a pick-one section and records it as
+  `SectionSpecialFunction`. Two tests were written expecting `Default` or
+  nothing; both expectations were wrong.
+- **An existing sub-configuration is re-marked `UserChoice` on open**
+  (`InitRuntimeData`), so a stored `Default` there is not a disagreement.
+- Creating a sub-configuration that is not on the order yet is refused
+  (`NeedsGpcError`); so is committing a total built on item-wide quantity
+  discounts or additional-choice articles.
+
 ## Display-only data
 
 Some things GPC recomputes on open and never stores — the lapsed-cover upgrade

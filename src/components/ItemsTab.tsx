@@ -4,6 +4,8 @@ import type { UpgradeLine } from '../lib/gpc/reentry.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
 import type { LicenseOption } from '../lib/gpc/licenses.ts'
 import { PasteOrderModal } from './PasteOrderModal.tsx'
+import { SystemEditorModal } from './SystemEditorModal.tsx'
+import type { SystemEditor } from '../lib/gpc/dependentListEngine.ts'
 import type { GpcContainer } from '../lib/gpc/container.ts'
 import type { OrderBlockPlan } from '../lib/gpc/orderBlock.ts'
 import {
@@ -42,6 +44,10 @@ interface ItemsTabProps {
   /** A block that arrived by link; opens the preview as soon as it is set. */
   linkedOrder: string | null
   onLinkedOrderHandled: () => void
+  /** A working copy of one configured system, or null when it cannot be opened. */
+  openSystemEditor: (no: string) => SystemEditor | null
+  /** Writes an editor's result into the order. Throws when the change cannot be priced. */
+  onApplySystem: (editor: SystemEditor) => void
 }
 
 type ModalType = 'product' | 'license' | 'paste' | null
@@ -362,9 +368,12 @@ export function ItemsTab({
   getUpgrades,
   linkedOrder,
   onLinkedOrderHandled,
+  openSystemEditor,
+  onApplySystem,
 }: ItemsTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+  const [systemEditor, setSystemEditor] = useState<SystemEditor | null>(null)
 
   // An order that arrived by link opens its preview by itself; there is no
   // other way for the operator to know it is there.
@@ -474,7 +483,15 @@ export function ItemsTab({
         onAddSmaExtension={onAddSmaExtension}
         onRemoveSmaExtension={onRemoveSmaExtension}
         getUpgrades={getUpgrades}
+        onConfigure={(no) => setSystemEditor(openSystemEditor(no))}
       />
+      {systemEditor && (
+        <SystemEditorModal
+          editor={systemEditor}
+          onApply={(editor) => { onApplySystem(editor); setSystemEditor(null) }}
+          onCancel={() => setSystemEditor(null)}
+        />
+      )}
       {activeModal === 'product' && (
         <SearchProductModal catalog={getArticleCatalog()} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />
       )}

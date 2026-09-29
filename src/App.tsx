@@ -27,6 +27,7 @@ import type { LicenseOption } from './lib/gpc/licenses.ts'
 import { readPdbConfig } from './lib/gpc/blankOrder.ts'
 import type { OrderDocument } from './lib/gpc/orderXml.ts'
 import { addCatalogArticle } from './lib/gpc/addItem.ts'
+import { EngineCatalog, SystemEditor } from './lib/gpc/dependentListEngine.ts'
 import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
@@ -376,6 +377,44 @@ export function App() {
     }
     return pdbCache.current.pdb
   }, [state])
+
+  /**
+   * The rules engine's view of the open catalog, cached like the container it
+   * is read from: indexing the dependent lists and articles is a walk of the
+   * whole product database.
+   */
+  const engineCatalogCache = useRef<{ key: string; catalog: EngineCatalog } | null>(null)
+
+  /**
+   * Opens one configured system for editing, on a fresh parse of the order so
+   * that cancelling leaves nothing behind.
+   */
+  const openSystemEditor = useCallback((no: string): SystemEditor | null => {
+    if (state.status !== 'loaded') return null
+    const pdb = getPdb()
+    if (!pdb || !state.result.configXml) {
+      setAddItemError('Changing a system needs the product database this order was built on.')
+      return null
+    }
+    setAddItemError(null)
+    try {
+      const key = String(state.result.configXml.length)
+      if (engineCatalogCache.current?.key !== key) {
+        engineCatalogCache.current = { key, catalog: new EngineCatalog(readPdbConfig(pdb)) }
+      }
+      const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
+      return new SystemEditor(doc, engineCatalogCache.current.catalog, no)
+    } catch (err) {
+      setAddItemError(err instanceof Error ? err.message : String(err))
+      return null
+    }
+  }, [state, getPdb])
+
+  /** Commits an editor's working copy. `commit` throws rather than write a total it cannot price. */
+  const handleApplySystem = useCallback((editor: SystemEditor) => {
+    editor.commit()
+    applyDocument(editor.order)
+  }, [applyDocument])
 
   /**
    * Applies a pasted order: the configuration onto the document, the customer
@@ -936,6 +975,8 @@ export function App() {
                   getUpgrades={getUpgrades}
                   linkedOrder={linkedOrder}
                   onLinkedOrderHandled={() => setLinkedOrder(null)}
+                  openSystemEditor={openSystemEditor}
+                  onApplySystem={handleApplySystem}
                 />
               )}
               {tab === 'account' && (

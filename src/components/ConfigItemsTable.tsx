@@ -24,6 +24,8 @@ interface ConfigItemsTableProps {
    * the file stores none of it, and saving must leave it that way.
    */
   getUpgrades: (sma: SmaDetails) => UpgradeLine[]
+  /** Opens the option editor for a configured system; absent when editing is not possible. */
+  onConfigure?: (no: string) => void
 }
 
 function calcMargin(msrp: number | null, dp: number | null): number | null {
@@ -591,6 +593,7 @@ function ItemRow({
   onAddSmaExtension,
   onRemoveSmaExtension,
   getUpgrades,
+  onConfigure,
 }: {
   item: ConfigItem
   expanded: boolean
@@ -604,8 +607,13 @@ function ItemRow({
   onAddSmaExtension: (dongleIndex: number, articleName: string) => void
   onRemoveSmaExtension: (dongleIndex: number, articleName: string) => void
   getUpgrades: (sma: SmaDetails) => UpgradeLine[]
+  onConfigure?: (no: string) => void
 }) {
   const margin = calcMargin(item.totalMsrp, item.totalDp)
+  // A top-level system: its options are a dependent list the rules engine can re-derive.
+  // A sub-configuration follows its parent and is edited through it.
+  const configurable = isEditing && onConfigure !== undefined && item.itemType === 'dependent' &&
+    !item.isSub && item.sections.length > 0
 
   const rowClass = [
     item.isSub ? 'row-sub' : 'row-main',
@@ -667,6 +675,16 @@ function ItemRow({
             )}
             {item.isHidden && <em className="hidden-badge">hidden</em>}
             {hasSma && <em className="sma-badge">SMA</em>}
+            {configurable && (
+              <button
+                type="button"
+                className="item-configure-btn"
+                onClick={(e) => { e.stopPropagation(); onConfigure!(item.no) }}
+                title={`Change the options of item ${item.no}`}
+              >
+                Configure
+              </button>
+            )}
           </span>
         </td>
         <td className="item-system-type" title={item.systemType}>
@@ -729,6 +747,7 @@ export function ConfigItemsTable({
   onAddSmaExtension,
   onRemoveSmaExtension,
   getUpgrades,
+  onConfigure,
 }: ConfigItemsTableProps) {
   const visibleItems = order.items.filter((i) => !i.isHidden)
   const totals = visibleItems.reduce(
@@ -801,6 +820,7 @@ export function ConfigItemsTable({
                 onAddSmaExtension={onAddSmaExtension}
                 onRemoveSmaExtension={onRemoveSmaExtension}
                 getUpgrades={getUpgrades}
+                onConfigure={onConfigure}
               />
             )
           })}

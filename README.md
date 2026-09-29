@@ -11,6 +11,10 @@ Open a `.gconfiguration` file and instantly see the full order breakdown: line i
 - Drag-and-drop, browse, or paste `.gconfiguration` files
 - Full order header — order number, distributor, price list, currency, destination
 - Expandable line items with per-article list price, end customer price, and distributor price
+- **Configure a system** — add or remove measuring volumes, swap a stand, change quantities. Every
+  click runs the configurator's own rules, so implied parts (camera frames, basic units, cases)
+  follow, options whose conditions lapse disappear, and sections left without a required pick are
+  flagged, exactly as GPC would show them
 - Cmd+K / Ctrl+K command palette for searching tabs, fields, contacts, and line items
 - Light / dark theme
 - Installable PWA — works offline after first load
@@ -137,6 +141,14 @@ https://<your-org>.github.io/<your-repo-name>/
 ## How it works
 
 `.gconfiguration` files are AES-128-CBC encrypted OPC/ZIP packages. The app decrypts them entirely in the browser using the WebCrypto API — no file data is ever sent to a server. The ZIP is unpacked with JSZip, and `order.xml` / `config.xml` are parsed with the browser's native DOMParser.
+
+A configured system stores every option of every section with an `Amount` and an `AmountMode`
+(picked by the operator, implied by another pick, forced by the section, a default). The rules
+that produce them — selection modes, preconditions, implications — live in the catalog's
+`DependentListsData`. `src/lib/gpc/dependentListEngine.ts` is a literal port of the
+configurator's `DependentListLogic`, and it is checked the only way that counts: replaying a file
+the configurator saved must reproduce every stored selection. The system editor re-prices from
+the prices the file already carries, so totals stay on the order's own catalog.
 
 ---
 

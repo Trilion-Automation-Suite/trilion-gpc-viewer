@@ -703,3 +703,21 @@
 .sma-sub-table th.right {
   padding-right: 14px;
 }
+
+/* Opens the system option editor; shown on configured systems while editing. */
+.item-configure-btn {
+  margin-left: 8px;
+  padding: 1px 8px;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--accent, #3498db);
+  background: var(--accent-subtle, rgba(52, 152, 219, 0.12));
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.item-configure-btn:hover {
+  border-color: var(--accent, #3498db);
+}
