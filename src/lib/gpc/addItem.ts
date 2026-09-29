@@ -16,7 +16,7 @@
 import type { GpcContainer } from './container.ts'
 import type { ElementValue, OrderDocument, OrderMember, OrderValue } from './orderXml.ts'
 import { setMember } from './orderXml.ts'
-import { readPdbConfig } from './blankOrder.ts'
+import { priceListFor, readPdbConfig } from './blankOrder.ts'
 import type { Dec } from './decimal.ts'
 import {
   add,
@@ -241,12 +241,7 @@ export function addFreeListLine(
   const articles = articleNames.map((n) => findArticle(config, n))
   const item = findFreeListItem(config, articles[0])
 
-  const priceListName = options.priceListName ?? orderField(order, 'PriceList')
-  if (!priceListName) {
-    throw new Error(
-      'addItem: no price list to price against — the order\'s <PriceList> is empty and none was supplied'
-    )
-  }
+  const priceListName = options.priceListName ?? ensurePriceList(order, config)
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
 
@@ -295,6 +290,30 @@ export function addFreeListLine(
 
   appendTo(order.root, 'FreeListArticlesData', 'FreeListScreenData', screen)
   return order
+}
+
+/**
+ * The order's price list, filling an empty one the way GPC does for a new
+ * order: the first list the catalog allows the order's user. An order can
+ * arrive without one — started outside GPC, or saved before a list was picked
+ * — and every price on it depends on this, so it is recorded on the order
+ * rather than guessed per line.
+ */
+export function ensurePriceList(order: OrderDocument, config: ElementValue): string {
+  const current = orderField(order, 'PriceList')
+  if (current) return current
+  const username = orderField(order, 'Username') ?? ''
+  let name: string
+  try {
+    name = priceListFor(config, username)
+  } catch {
+    throw new Error(
+      `This order has no price list, and the catalog names none for its user ${JSON.stringify(username)}. ` +
+        'Set the price list on the order first.'
+    )
+  }
+  setMember(order.root, 'OrderData', 'PriceList', txt(name))
+  return name
 }
 
 function orderField(order: OrderDocument, name: string): string | null {
@@ -643,12 +662,7 @@ export function addFreeArticle(
   const article = findArticle(config, articleName)
   const item = findFreeArticlesItem(config, article)
 
-  const priceListName = options.priceListName ?? orderField(order, 'PriceList')
-  if (!priceListName) {
-    throw new Error(
-      'addItem: no price list to price against — the order\'s <PriceList> is empty and none was supplied'
-    )
-  }
+  const priceListName = options.priceListName ?? ensurePriceList(order, config)
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
   const configText = pdbConfigXml(pdb)
@@ -806,12 +820,7 @@ export function addSupportArticle(
     throw new Error(`addItem: ${JSON.stringify(articleName)} is not a software-support article`)
   }
 
-  const priceListName = options.priceListName ?? orderField(order, 'PriceList')
-  if (!priceListName) {
-    throw new Error(
-      'addItem: no price list to price against — the order\'s <PriceList> is empty and none was supplied'
-    )
-  }
+  const priceListName = options.priceListName ?? ensurePriceList(order, config)
   const exchangeRate = options.exchangeRate ?? orderExchangeRate(order)
   const amount = options.amount ?? 1
   const configText = pdbConfigXml(pdb)

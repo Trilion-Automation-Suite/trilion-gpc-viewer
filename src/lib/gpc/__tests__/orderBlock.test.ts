@@ -454,7 +454,8 @@ describe('the block decides the price list', () => {
     const block = { ...BLOCK, items: [{ type: 'article' as const, name: 'Calibration Panel CPA30/210' }] }
     delete (block as { priceList?: string }).priceList
     const report = applyOrderBlockItems(order, pdb, planOrderBlock(block, pdb))
-    expect(report.failed[0].problem).toMatch(/no price list to price against/)
+    // No price list on the order, none in the block, and no catalog user to take one from.
+    expect(report.failed[0].problem).toMatch(/no price list, and the catalog names none for its user/)
   })
 })
 

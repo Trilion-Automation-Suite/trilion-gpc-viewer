@@ -179,3 +179,36 @@ describe('addCatalogArticle routes an article to the right kind of item', () => 
     })).toBe(true)
   })
 })
+
+describe('an order with no price list', () => {
+  // Started outside GPC, or saved before a list was picked: <PriceList /> is empty.
+  const withUser = CONFIG.replace(
+    '<AdministrationData>',
+    '<AdministrationData>\n  <UsersData><Users><UsersItem><Username>Partner_User</Username>' +
+      '<PriceLists><PriceListsItem>Partner</PriceListsItem><PriceListsItem>VW</PriceListsItem></PriceLists>' +
+      '</UsersItem></Users></UsersData>'
+  )
+  const noList = ORDER.replace('<PriceList>Partner</PriceList>', '<PriceList />').replace(
+    '</OrderData>',
+    '  <Username>Partner_User</Username>\r\n</OrderData>'
+  )
+  const container = (config: string): GpcContainer => ({
+    dosTime: 0,
+    dosDate: 0,
+    entries: [{ name: 'config.xml', data: new TextEncoder().encode(config), method: 8 }],
+  })
+
+  it("takes the first list the catalog allows the order's user, as GPC does for a new order", () => {
+    const order = parseOrderXml(new TextEncoder().encode(noList))
+    const xml = xmlOf(addCatalogArticle(order, container(withUser), 'Calibration Panel'))
+    expect(xml).toContain('<PriceList>Partner</PriceList>')
+    expect(xml).toContain('Calibration Panel')
+  })
+
+  it('says what to do when the catalog has no list for that user either', () => {
+    const order = parseOrderXml(new TextEncoder().encode(noList))
+    expect(() => addCatalogArticle(order, container(CONFIG), 'Calibration Panel')).toThrow(
+      /no price list, and the catalog names none for its user "Partner_User"/
+    )
+  })
+})

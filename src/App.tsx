@@ -51,6 +51,7 @@ import { EucTab } from './components/EucTab.tsx'
 import { PdbSwitcher } from './components/PdbSwitcher.tsx'
 import { SaveBar } from './components/SaveBar.tsx'
 import { InstallBanner } from './components/InstallBanner.tsx'
+import { ResetCache } from './components/ResetCache.tsx'
 import './App.css'
 
 type Tab = 'items' | 'account' | 'contact' | 'admin' | 'comments' | 'euc'
@@ -1020,7 +1021,10 @@ export function App() {
       </main>
 
       <footer className="app-footer">
-        <span className="footer-version">v{__APP_VERSION__}</span>
+        <span className="footer-version">
+          v{__APP_VERSION__}
+          <ResetCache hasUnsavedChanges={isDirty} />
+        </span>
         <div className="footer-legal-block">
           <span className="footer-legal-heading">INTERNAL USE ONLY — PROPRIETARY &amp; CONFIDENTIAL</span>
           <span className="footer-legal">

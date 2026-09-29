@@ -40,6 +40,7 @@ import { add, divide, fromInt, isZero, multiply } from './decimal.ts'
 import { scanDiscounts, scanRoundingRules } from './roundingRules.ts'
 import {
   decimalString,
+  ensurePriceList,
   ensureSupportScreen,
   findArticle,
   plainSupportFilter,
@@ -564,19 +565,15 @@ function priceContext(
   options: { priceListName?: string; exchangeRate?: Dec; currencyIso?: string }
 ): PriceContext {
   const configText = configXml(pdb)
+  const config = readPdbConfig(pdb)
   return {
-    config: readPdbConfig(pdb),
-    priceListName: options.priceListName ?? orderText(order, 'PriceList') ?? '',
+    config,
+    priceListName: options.priceListName ?? ensurePriceList(order, config),
     exchangeRate: options.exchangeRate ?? orderExchangeRate(order),
     currencyIso: options.currencyIso ?? orderCurrencyIso(order),
     rules: scanRoundingRules(configText),
     discounts: scanDiscounts(configText),
   }
-}
-
-function orderText(order: OrderDocument, name: string): string | null {
-  const v = order.root.members.find((m) => m.name === name)?.value
-  return v && v.kind === 'text' ? v.value : null
 }
 
 function orderExchangeRate(order: OrderDocument): Dec {

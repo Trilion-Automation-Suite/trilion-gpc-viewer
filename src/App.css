@@ -381,9 +381,44 @@
 }
 
 .footer-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   font-size: 0.72rem;
   color: var(--text-faint);
   letter-spacing: 0.04em;
+}
+
+.footer-reset {
+  padding: 1px 8px;
+  font: inherit;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.footer-reset:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.footer-reset--danger {
+  color: #b3261e;
+  border-color: #b3261e;
+}
+
+.footer-reset-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-reset-note {
+  color: var(--text-secondary);
 }
 
 .footer-legal-block {

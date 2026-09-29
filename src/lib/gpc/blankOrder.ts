@@ -135,7 +135,8 @@ export function currencyRow(config: ElementValue, iso: string, validFrom?: strin
 }
 
 /** A user's first configured price list. */
-function priceListFor(config: ElementValue, username: string): string {
+/** The first price list a catalog user may use — what GPC gives a new order. */
+export function priceListFor(config: ElementValue, username: string): string {
   const users = children(section(config, 'UsersData'), 'Users')
   const user = users.find((u) => field(u, 'Username') === username)
   if (!user) throw new Error(`blankOrder: PDB has no user ${JSON.stringify(username)}`)

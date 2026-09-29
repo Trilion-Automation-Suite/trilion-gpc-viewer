@@ -5,7 +5,7 @@
  * The PDB is NOT committed to the repo — only cached locally in the browser.
  */
 
-const DB_NAME = 'gpc-viewer-pdb'
+export const DB_NAME = 'gpc-viewer-pdb'
 const DB_VERSION = 2
 const STORE = 'pdb'
 /**
