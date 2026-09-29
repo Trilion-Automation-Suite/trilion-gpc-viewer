@@ -64,3 +64,9 @@
 .pdb-report p { margin: .4rem 0 0; }
 .pdb-report-note { opacity: .7; }
 .pdb-report-warn { color: #8a5a00; }
+
+.pdb-report-block { margin-top: .5rem; }
+.pdb-report-block ul, .pdb-report-details ul { margin: .25rem 0 0; padding-left: 1.1rem; }
+.pdb-report-block li, .pdb-report-details li { margin: .1rem 0; }
+.pdb-report-details { margin-top: .5rem; opacity: .75; font-size: .9em; }
+.pdb-report-details summary { cursor: pointer; }

@@ -112,67 +112,84 @@ export function PdbSwitcher({
             <strong>Converted to {report.targetCatalog}</strong>
             <button type="button" onClick={onDismissReport} aria-label="Dismiss">×</button>
           </div>
-          <p>
-            {report.articles.replaced} of {report.articles.total} articles updated
-            {report.configurationItems.replaced > 0 && `, ${report.configurationItems.replaced} categories`}
-            {report.priceChanges.filter((c) => c.field !== 'LongName').length > 0 &&
-              `, ${report.priceChanges.filter((c) => c.field !== 'LongName').length} price changes`}.
-          </p>
-          {report.configurationItems.renamed.length > 0 && (
-            <p className="pdb-report-note">
-              Renamed: {report.configurationItems.renamed.map((r) => `${r.from} → ${r.to}`).join('; ')}
-            </p>
-          )}
-          {(report.dependentLists.sectionsRemoved.length > 0 ||
-            report.dependentLists.optionsRemoved.length > 0 ||
-            report.dependentLists.optionsAdded.length > 0) && (
-            <p className="pdb-report-note">
-              Option trees rebuilt on {report.dependentLists.reconciled} line
-              {report.dependentLists.reconciled === 1 ? '' : 's'}:{' '}
-              {[
-                report.dependentLists.sectionsRemoved.length &&
-                  `${new Set(report.dependentLists.sectionsRemoved).size} section(s) this catalog dropped`,
-                report.dependentLists.optionsRemoved.length &&
-                  `${new Set(report.dependentLists.optionsRemoved).size} option(s) dropped`,
-                report.dependentLists.optionsAdded.length &&
-                  `${new Set(report.dependentLists.optionsAdded).size} option(s) added`,
-              ].filter(Boolean).join(', ')}. GPC cannot open a file whose option tree
-              disagrees with the catalog, so this is required, not cosmetic.
-            </p>
-          )}
-          {(report.dependentLists.picksLost?.length ?? 0) > 0 && (
-            <p className="pdb-report-warn">
-              No longer in {report.targetCatalog}, so the pick was dropped — choose a replacement in
-              Configure: {report.dependentLists.picksLost.join('; ')}.
-            </p>
-          )}
-          {(report.rulesApplied?.length ?? 0) > 0 && (
-            <p className="pdb-report-note">
-              GPC's rules on the new catalog changed: {report.rulesApplied.map((r) => r.replace(/^[^:]*: /, '')).join('; ')}.
-            </p>
-          )}
-          {(report.rulesFailed?.length ?? 0) > 0 && (
-            <p className="pdb-report-warn">{report.rulesFailed.join(' ')}</p>
-          )}
-          {report.dependentListsNotConverted.length > 0 && (
-            <p className="pdb-report-warn">
-              This catalog has no option tree named{' '}
-              {report.dependentListsNotConverted.join(', ')}, so{' '}
-              {report.dependentListsNotConverted.length === 1 ? 'that line was' : 'those lines were'}{' '}
-              left on the old one. GPC will probably refuse the saved file — send it to
-              whoever maintains the catalog rather than editing it here.
-            </p>
-          )}
-          {report.issues.length > 0 && (
-            <p className="pdb-report-warn">
-              {report.issues.length} article{report.issues.length === 1 ? '' : 's'} need review:{' '}
-              {report.issues.slice(0, 4).map((i) => i.longName ?? '(unnamed)').join(', ')}
-              {report.issues.length > 4 && ` and ${report.issues.length - 4} more`}.
-            </p>
-          )}
+          <ConversionSummary report={report} />
           <p className="pdb-report-note">Save to keep this conversion.</p>
         </div>
       )}
     </div>
+  )
+}
+
+function money(value: string | null): string {
+  if (value === null || value === '') return '—'
+  const n = Number(value)
+  return Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : value
+}
+
+/**
+ * What a conversion did, in the order someone acting on it needs: anything to
+ * fix first, then what changed in the quote, then the mechanics for whoever is
+ * troubleshooting. Counts of rebuilt sections and repriced rows are true but
+ * not actionable, so they wait in the details.
+ */
+function ConversionSummary({ report }: { report: ConversionReport }) {
+  const lost = report.dependentLists.picksLost ?? []
+  const failed = report.rulesFailed ?? []
+  const changes = report.ruleChanges ?? []
+  const added = changes.filter((c) => c.added)
+  const removed = changes.filter((c) => !c.added)
+  const { msrpBefore, msrpAfter } = report.totals ?? { msrpBefore: null, msrpAfter: null }
+  const delta = msrpBefore && msrpAfter ? Number(msrpAfter) - Number(msrpBefore) : null
+  const describe = (c: { section: string; option: string }) => `${c.option} (${c.section})`
+  const attention: string[] = [
+    ...lost.map((l) => `${l} is no longer in this catalog; pick a replacement in Configure`),
+    ...report.issues.map((i) => `Article not found in this catalog: ${i.longName ?? '(unnamed)'}`),
+    ...report.dependentListsNotConverted.map((l) => `Line left on the old catalog (no list "${l}" here); GPC may refuse the file`),
+    ...failed,
+  ]
+  const repriced = report.priceChanges.filter((c) => c.field !== 'LongName').length
+
+  return (
+    <>
+      {attention.length > 0 && (
+        <div className="pdb-report-block">
+          <strong className="pdb-report-warn">Needs your attention</strong>
+          <ul>{attention.map((a, i) => <li key={i} className="pdb-report-warn">{a}</li>)}</ul>
+        </div>
+      )}
+      <div className="pdb-report-block">
+        <strong>What changed</strong>
+        <ul>
+          {msrpBefore !== msrpAfter && (
+            <li>
+              List price {money(msrpBefore)} → {money(msrpAfter)}
+              {delta !== null && delta !== 0 && ` (${delta > 0 ? '+' : '−'}${money(String(Math.abs(delta)))})`}
+            </li>
+          )}
+          {added.length > 0 && <li>Now included: {added.map(describe).join('; ')}</li>}
+          {removed.length > 0 && <li>No longer included: {removed.map(describe).join('; ')}</li>}
+          {msrpBefore === msrpAfter && changes.length === 0 && <li>Nothing in the configuration changed; prices are the new catalog's.</li>}
+        </ul>
+      </div>
+      <details className="pdb-report-details">
+        <summary>Details</summary>
+        <ul>
+          <li>{repriced} price{repriced === 1 ? '' : 's'} updated from the new catalog</li>
+          {report.articles.total > 0 && <li>{report.articles.replaced} of {report.articles.total} catalog articles matched</li>}
+          {report.configurationItems.replaced > 0 && <li>{report.configurationItems.replaced} configuration item{report.configurationItems.replaced === 1 ? '' : 's'} refreshed</li>}
+          {report.configurationItems.renamed.length > 0 && (
+            <li>Renamed: {report.configurationItems.renamed.map((r) => `${r.from} → ${r.to}`).join('; ')}</li>
+          )}
+          {report.dependentLists.reconciled > 0 && (
+            <li>
+              Option lists rebuilt to match the new catalog on {report.dependentLists.reconciled} line
+              {report.dependentLists.reconciled === 1 ? '' : 's'}: {new Set(report.dependentLists.sectionsRemoved).size} section
+              {new Set(report.dependentLists.sectionsRemoved).size === 1 ? '' : 's'} and {new Set(report.dependentLists.optionsRemoved).size} option
+              {new Set(report.dependentLists.optionsRemoved).size === 1 ? '' : 's'} it dropped, {new Set(report.dependentLists.optionsAdded).size} it added
+            </li>
+          )}
+        </ul>
+      </details>
+    </>
   )
 }

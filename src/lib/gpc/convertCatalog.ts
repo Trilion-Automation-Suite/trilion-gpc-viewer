@@ -60,6 +60,10 @@ export interface ConversionReport {
    * section takes its default — exactly what GPC's own import does.
    */
   rulesApplied: string[]
+  /** The same changes, structured for display: which line, section and option, and which way. */
+  ruleChanges: Array<{ no: string; item: string; section: string; option: string; added: boolean }>
+  /** The order's list and distributor totals before and after, as written in the file. */
+  totals: { msrpBefore: string | null; msrpAfter: string | null; dpBefore: string | null; dpAfter: string | null }
   /** Systems the rules could not be re-run on; they need opening in GPC. */
   rulesFailed: string[]
   /** Line items whose totals are not a plain sum, so they were left alone. */
@@ -267,6 +271,8 @@ export function convertOrderToCatalog(
     configurationItems: { replaced: 0, renamed: [], unmatched: [] },
     priceChanges: [],
     rulesApplied: [],
+    ruleChanges: [],
+    totals: { msrpBefore: text(order.root, 'Msrp'), msrpAfter: null, dpBefore: text(order.root, 'Dp'), dpAfter: null },
     rulesFailed: [],
     totalsLeft: [],
     dependentLists: {
@@ -304,6 +310,8 @@ export function convertOrderToCatalog(
     distributor: text(order.root, 'Distributor') ?? undefined,
     homCenter: text(order.root, 'HOMCenter') ?? undefined,
   })
+  report.totals.msrpAfter = text(order.root, 'Msrp')
+  report.totals.dpAfter = text(order.root, 'Dp')
 
   return report
 }
@@ -327,9 +335,16 @@ function applyTargetRules(order: OrderDocument, targetPdb: GpcContainer, report:
       })
       for (const c of editor.changes()) {
         report.rulesApplied.push(`${no} ${name}: ${c.to > c.from ? '+' : '-'} ${c.option}${c.no !== no ? ` (in ${c.no})` : ''}`)
+        report.ruleChanges.push({ no, item: name, section: c.section, option: c.option, added: c.to > c.from })
       }
-      for (const s of editor.addedSubconfigs) report.rulesApplied.push(`${no} ${name}: + sub-configuration ${s}`)
-      for (const s of editor.removedSubconfigs) report.rulesApplied.push(`${no} ${name}: - sub-configuration ${s}`)
+      for (const s of editor.addedSubconfigs) {
+        report.rulesApplied.push(`${no} ${name}: + sub-configuration ${s}`)
+        report.ruleChanges.push({ no, item: name, section: 'Sub-configuration', option: s, added: true })
+      }
+      for (const s of editor.removedSubconfigs) {
+        report.rulesApplied.push(`${no} ${name}: - sub-configuration ${s}`)
+        report.ruleChanges.push({ no, item: name, section: 'Sub-configuration', option: s, added: false })
+      }
       editor.commit()
     } catch (err) {
       report.rulesFailed.push(`${no} ${name}: the configurator's rules could not be re-run on the new catalog (${err instanceof Error ? err.message : String(err)}). Open it in GPC before sending.`)
