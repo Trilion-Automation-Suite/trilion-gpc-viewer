@@ -18,7 +18,8 @@
 import type { GpcContainer } from './container.ts'
 import { readPdbConfig } from './blankOrder.ts'
 import { decimalString, findArticle, priceArticle, recalculateOrder } from './addItem.ts'
-import { findDependentList } from './dependentList.ts'
+import { addSubConfiguration, findDependentList, optionPricer, renumberSubConfigurations } from './dependentList.ts'
+import { EngineCatalog, SystemEditor } from './dependentListEngine.ts'
 import { fromInt, parseDecimalOrNull } from './decimal.ts'
 import { scanDiscounts, scanRoundingRules } from './roundingRules.ts'
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
@@ -52,6 +53,15 @@ export interface ConversionReport {
   matchedBy: Partial<Record<MatchKind, number>>
   configurationItems: { replaced: number; renamed: Array<{ from: string; to: string }>; unmatched: string[] }
   priceChanges: PriceChange[]
+  /**
+   * What the configurator's rules changed once each system was re-run on the
+   * target catalog, as "1 ARAMIS Adjustable: + 2026 Sensor Driver ARAMIS". A
+   * licence year moves, a withdrawn option's dependants re-derive, a new
+   * section takes its default — exactly what GPC's own import does.
+   */
+  rulesApplied: string[]
+  /** Systems the rules could not be re-run on; they need opening in GPC. */
+  rulesFailed: string[]
   /** Line items whose totals are not a plain sum, so they were left alone. */
   totalsLeft: string[]
   /**
@@ -249,6 +259,8 @@ export function convertOrderToCatalog(
     matchedBy: {},
     configurationItems: { replaced: 0, renamed: [], unmatched: [] },
     priceChanges: [],
+    rulesApplied: [],
+    rulesFailed: [],
     totalsLeft: [],
     dependentLists: {
       reconciled: 0, sectionsAdded: [], sectionsRemoved: [], optionsAdded: [], optionsRemoved: [],
@@ -272,6 +284,13 @@ export function convertOrderToCatalog(
   const version = index.versionName
   if (version) setText(order.root, 'SourceFileName', version)
 
+  // The option tree now matches the target catalog, but the picks in it were
+  // made under the old one's rules. GPC's own import re-runs them — a 2025
+  // licence becomes the 2026 one, a withdrawn computer takes its case and
+  // interface with it, a new section takes its default — and totals follow.
+  // Each configured system goes through the same rules engine here.
+  applyTargetRules(order, targetPdb, report)
+
   // Totals are recomputed from the converted line items, so the order's own
   // figures never disagree with the articles it now carries.
   recalculateOrder(order, targetPdb, {
@@ -280,6 +299,35 @@ export function convertOrderToCatalog(
   })
 
   return report
+}
+
+function applyTargetRules(order: OrderDocument, targetPdb: GpcContainer, report: ConversionReport): void {
+  const list = sub(order.root, 'DependentListsData')
+  if (!list || list.members.length === 0) return
+  const catalog = new EngineCatalog(readPdbConfig(targetPdb))
+  for (const m of list.members) {
+    if (m.value.kind !== 'element') continue
+    const no = text(m.value, 'No')
+    const name = key(sub(m.value, 'ConfigurationItem') ?? m.value, 'Name') ?? '(unnamed item)'
+    if (!no) continue
+    try {
+      const editor = new SystemEditor(order, catalog, no, {
+        pricer: optionPricer(order, targetPdb),
+        buildSubconfig: (parent, itemName) => addSubConfiguration(order, targetPdb, parent, itemName),
+        renumber: () => renumberSubConfigurations(order),
+        // The stored totals are the old catalog's; there is nothing to check them against.
+        fresh: true,
+      })
+      for (const c of editor.changes()) {
+        report.rulesApplied.push(`${no} ${name}: ${c.to > c.from ? '+' : '-'} ${c.option}${c.no !== no ? ` (in ${c.no})` : ''}`)
+      }
+      for (const s of editor.addedSubconfigs) report.rulesApplied.push(`${no} ${name}: + sub-configuration ${s}`)
+      for (const s of editor.removedSubconfigs) report.rulesApplied.push(`${no} ${name}: - sub-configuration ${s}`)
+      editor.commit()
+    } catch (err) {
+      report.rulesFailed.push(`${no} ${name}: the configurator's rules could not be re-run on the new catalog (${err instanceof Error ? err.message : String(err)}). Open it in GPC before sending.`)
+    }
+  }
 }
 
 interface Ctx {
@@ -334,6 +382,12 @@ function convertNode(node: ElementValue, ctx: Ctx): void {
       if (ci && ci.value.kind === 'element') {
         replaceConfigurationItem(ci as { name: string; value: ElementValue }, ctx)
       }
+      // Its sub-configurations are dependent lists too — the in-system SMA,
+      // Training — with option trees of their own that GPC resolves the same
+      // positional way. PDB290's SMA list gained a section; leaving a child on
+      // PDB283's shape crashes InitRuntimeData just as a stale parent does.
+      const children = sub(value, 'SubConfigurations')
+      if (children) convertNode(children, ctx)
       continue
     }
 
@@ -508,7 +562,9 @@ function newOption(catalogArticle: ElementValue, name: string, ctx: Ctx): Elemen
       { name: 'SumDp', value: { kind: 'nil' } },
       { name: 'CustomQuantityDiscount', value: { kind: 'nil' } },
       { name: 'Name', value: t(name) },
-      { name: 'AmountMode', value: t('Unselected') },
+      // GPC's AmountMode for an option nobody picked. There is no 'Unselected':
+      // .NET rejects the whole order over an unknown enum value.
+      { name: 'AmountMode', value: t('None') },
     ],
   }
 }

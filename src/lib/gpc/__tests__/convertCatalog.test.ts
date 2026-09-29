@@ -159,7 +159,10 @@ describe('convertOrderToCatalog: the dependent-list mirror', () => {
     const added = /<SectionArticleScreenData>((?:(?!<\/SectionArticleScreenData>)[\s\S])*?<Name>New Option<\/Name>[\s\S]*?)<\/SectionArticleScreenData>/
       .exec(xmlOf(order))?.[1] ?? ''
     expect(added).toContain('<Amount>0</Amount>')
-    expect(added).toContain('<AmountMode>Unselected</AmountMode>')
+    // GPC's AmountMode for an option nobody picked is None. 'Unselected' is not
+    // a member of the enum, and .NET refuses the whole order over it.
+    expect(added).toContain('<AmountMode>None</AmountMode>')
+    expect(xmlOf(order)).not.toContain('Unselected')
     expect(added).toContain('<Msrp>30</Msrp>')
   })
 

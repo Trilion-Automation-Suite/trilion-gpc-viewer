@@ -140,6 +140,14 @@ export function PdbSwitcher({
               disagrees with the catalog, so this is required, not cosmetic.
             </p>
           )}
+          {(report.rulesApplied?.length ?? 0) > 0 && (
+            <p className="pdb-report-note">
+              GPC's rules on the new catalog changed: {report.rulesApplied.map((r) => r.replace(/^[^:]*: /, '')).join('; ')}.
+            </p>
+          )}
+          {(report.rulesFailed?.length ?? 0) > 0 && (
+            <p className="pdb-report-warn">{report.rulesFailed.join(' ')}</p>
+          )}
           {report.dependentListsNotConverted.length > 0 && (
             <p className="pdb-report-warn">
               This catalog has no option tree named{' '}

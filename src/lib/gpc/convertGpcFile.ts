@@ -15,6 +15,7 @@ import { METHOD_DEFLATE, METHOD_STORED, readContainer, writeContainer } from './
 import type { GpcContainer } from './container.ts'
 import { parseOrderXml, serializeOrderXml } from './orderXml.ts'
 import { convertOrderToCatalog } from './convertCatalog.ts'
+import { describeViolations, validateOrderXml } from './validateOrder.ts'
 import type { ConversionReport } from './convertCatalog.ts'
 
 const BOM = '﻿'
@@ -135,12 +136,24 @@ export async function convertToDecryptedCatalog(
   const sourceCatalog = textMember(order.root, 'SourceFileName')
 
   const report = convertOrderToCatalog(order, target)
+  const targetConfigText = new TextDecoder().decode(part(target, 'config.xml'))
 
   // A conversion is a save: the timestamp moves, the relationship Ids are new.
   const now = new Date()
   const stamp = dotNetTimestamp(now)
   const lastModified = order.root.members.find((m) => m.name === 'LastModified')
   if (lastModified && lastModified.value.kind === 'text') lastModified.value.value = stamp
+
+  // Checked before it is written: GPC reports any member or enum it cannot
+  // read as "no Order-Part" and refuses the whole file. An 'Unselected'
+  // AmountMode on a newly added option shipped that way once.
+  const orderBytes = serializeOrderXml(order)
+  const violations = validateOrderXml(new TextDecoder().decode(orderBytes)).filter(
+    (v) => !knownToCatalog(v, targetConfigText)
+  )
+  if (violations.length > 0) {
+    throw new Error(`The converted order would not open in GPC:\n${describeViolations(violations)}`)
+  }
 
   // version.xml and config.xml come from the target: the order now *is* that catalog's.
   const zip = await writeContainer({
@@ -149,7 +162,7 @@ export async function convertToDecryptedCatalog(
       { name: 'version.xml', data: part(target, 'version.xml'), method: METHOD_DEFLATE },
       { name: '_rels/.rels', data: relsXml(), method: METHOD_STORED },
       { name: 'config.xml', data: part(target, 'config.xml'), method: METHOD_DEFLATE },
-      { name: 'order.xml', data: serializeOrderXml(order), method: METHOD_DEFLATE },
+      { name: 'order.xml', data: orderBytes, method: METHOD_DEFLATE },
       { name: '[Content_Types].xml', data: contentTypesXml(), method: METHOD_DEFLATE },
     ],
   })
@@ -167,12 +180,37 @@ export async function convertToDecryptedCatalog(
   }
 }
 
+/**
+ * A member the validator's table does not know, on an element the order cloned
+ * from the target catalog. The table is generated from a decompiled GPC
+ * release and lags behind the one that wrote the catalog: PDB290 comes from
+ * GPC 2.9.19, whose Article carries <Responsible>, and GPC's own import writes
+ * it into the order too. What the catalog itself has on that element is by
+ * definition what its GPC reads; anything else is still refused.
+ */
+function knownToCatalog(v: { kind: string; path: string; element: string }, configText: string): boolean {
+  if (v.kind !== 'unknown-member') return false
+  const parent = v.path.split('/').pop() ?? ''
+  if (!parent) return false
+  const open = new RegExp(`<${parent}[\\s>]`, 'g')
+  const child = new RegExp(`^\\s*<${v.element}[\\s/>]`, 'm')
+  let m: RegExpExecArray | null
+  let checked = 0
+  while ((m = open.exec(configText)) !== null && checked++ < 50) {
+    const close = configText.indexOf(`</${parent}>`, m.index)
+    if (close < 0) break
+    if (child.test(configText.slice(m.index, close))) return true
+  }
+  return false
+}
+
 /** True when the conversion left something a person should look at. */
 export function needsReview(report: ConversionReport): boolean {
   return (
     report.issues.length > 0 ||
     report.dependentListsNotConverted.length > 0 ||
     report.configurationItems.unmatched.length > 0 ||
-    report.totalsLeft.length > 0
+    report.totalsLeft.length > 0 ||
+    (report.rulesFailed?.length ?? 0) > 0
   )
 }

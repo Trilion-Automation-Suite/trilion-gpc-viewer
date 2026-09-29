@@ -6,6 +6,7 @@ import { planOrderBlock } from '../orderBlock.ts'
 import type { OrderBlock } from '../orderBlock.ts'
 import { applyOrderBlockItems } from '../applyOrderBlock.ts'
 import { EngineCatalog, SystemEditor, replayOrder } from '../dependentListEngine.ts'
+import { convertOrderToCatalog } from '../convertCatalog.ts'
 
 /**
  * A fictional catalog with the shapes a real measuring system has, and none of
@@ -286,5 +287,33 @@ describe('a sales order becomes the system it describes', () => {
   it('recognises a system with no base to choose from its camera alone', () => {
     const plan = planOrderBlock(block([article('Scanner Q', 'S-SCANQ'), article('Workstation S', 'S-WSS')]), pdb())
     expect(plan.systems.map(s => [s.itemName, s.members.sort()])).toEqual([['Scanner', [0, 1]]])
+  })
+})
+
+describe('converting a configured system to a newer catalog', () => {
+  // V2's in-system SMA list gains a section, as PDB290's did over PDB283.
+  const V2 = CONFIG
+    .replace('<VersionName>TESTPDB</VersionName>', '<VersionName>TESTPDB2</VersionName>')
+    .replace(`${section('Cover', 'OneOrMore', [{ name: 'Inc. SMA for Driver X', def: 1 }])}`,
+      `${section('Cover', 'OneOrMore', [{ name: 'Inc. SMA for Driver X', def: 1 }])}${section('Extend Existing', 'OneOrMore', [{ name: 'Extend' }])}`)
+  const pdbV2 = (): GpcContainer => ({
+    dosTime: 0,
+    dosDate: 0,
+    entries: [{ name: 'config.xml', data: new TextEncoder().encode(V2), method: 8 }],
+  })
+  const configV2 = (): ElementValue =>
+    parseOrderXml(new TextEncoder().encode(V2.replace('<AdministrationData>', '<OrderData>').replace('</AdministrationData>', '</OrderData>'))).root
+
+  it('rebuilds its sub-configurations and re-runs the rules on the new catalog', () => {
+    const doc = parseOrderXml(new TextEncoder().encode(ORDER))
+    applyOrderBlockItems(doc, pdb(), planOrderBlock(block([
+      article('Frame 800 for X', 'S-F800X'), article('Rig Camera X', 'S-CAMX'),
+    ]), pdb()))
+    const report = convertOrderToCatalog(doc, pdbV2())
+    // The SMA child now has V2's two sections; a stale child is what crashes GPC on open.
+    expect(report.dependentLists.sectionsAdded).toContain('RSMA/Extend Existing')
+    expect(report.rulesFailed).toEqual([])
+    expect(replayOrder(doc, configV2())).toEqual([])
+    expect(new TextDecoder().decode(serializeOrderXml(doc))).not.toContain('Unselected')
   })
 })
