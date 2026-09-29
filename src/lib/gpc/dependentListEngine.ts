@@ -28,7 +28,8 @@
  * AmountMode. `replaySystem` is that check.
  *
  * What it will not do: build a sub-configuration that is not already on the
- * order (Training, a re-added SMA). The pick is refused with `NeedsGpcError`.
+ * order (Training, a re-added SMA). The pick is shown, and `commit` refuses it
+ * with `NeedsGpcError`.
  */
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
 import { member, text } from './orderXml.ts'
@@ -320,6 +321,8 @@ export class EngineCatalog {
   private readonly articles = new Map<string, ArticleInfo | null>()
   readonly configItems = new Map<string, ConfigItemInfo>()
   readonly regions = new Map<string, string[]>()
+  /** DestinationsData/CountriesAndIsos: country name and ISO code, for legacy orders. */
+  readonly countries: Array<{ country: string; iso: string }> = []
   readonly users = new Map<string, ElementValue>()
 
   constructor(config: ElementValue) {
@@ -340,6 +343,9 @@ export class EngineCatalog {
         blacklist: strings(c, 'UserBlacklist'),
         regional: strings(c, 'RegionalRestrictionNotInTheseCountriesRegions'),
       })
+    }
+    for (const c of kids(sub(sub(config, 'DestinationsData'), 'CountriesAndIsos'))) {
+      this.countries.push({ country: str(c, 'Country') ?? '', iso: str(c, 'Iso') ?? '' })
     }
     for (const r of kids(sub(sub(config, 'DestinationsData'), 'RegionsAndIsoLists'))) {
       this.regions.set(str(r, 'Region') ?? '', strings(r, 'IsoList'))
@@ -1018,13 +1024,23 @@ class ListHandler {
   private subs: ListHandler[] = []
   private initDone = false
   readonly removedSubconfigs: string[]
+  /** Sub-configurations the rules want added; building one is left to GPC. */
+  readonly missingSubconfigs: string[]
 
-  constructor(ctx: EngineContext, data: ListState, catalog: EngineCatalog, uch?: UserChoiceHandler, removed?: string[]) {
+  constructor(
+    ctx: EngineContext,
+    data: ListState,
+    catalog: EngineCatalog,
+    uch?: UserChoiceHandler,
+    removed?: string[],
+    missing?: string[]
+  ) {
     this.ctx = ctx
     this.data = data
     this.catalog = catalog
     this.uch = uch ?? new UserChoiceHandler()
     this.removedSubconfigs = removed ?? []
+    this.missingSubconfigs = missing ?? []
     this.updateRestrictions()
     this.resetRestricted()
   }
@@ -1137,7 +1153,7 @@ class ListHandler {
     if (!h) {
       const sc = this.data.subconfigs.find((s) => s.itemName === ci.name)
       if (sc instanceof ListState) {
-        h = new ListHandler(this.ctx, sc, this.catalog, this.uch, this.removedSubconfigs)
+        h = new ListHandler(this.ctx, sc, this.catalog, this.uch, this.removedSubconfigs, this.missingSubconfigs)
         this.subs.push(h)
       }
     }
@@ -1158,6 +1174,7 @@ class ListHandler {
   /** ProcessDependentLists: one full pass over the list and its children. */
   process(): void {
     const stack = new DependencyStack()
+    this.missingSubconfigs.length = 0
     let num = -1
     let pass = 0
     for (; pass < 21; pass++) {
@@ -1226,10 +1243,10 @@ class ListHandler {
           sd.isChanged = true
         }
       } else if (!sc) {
-        throw new NeedsGpcError(
-          `'${opt.name}' would be added to '${this.data.itemName}' as a new sub-configuration ` +
-            `(section '${sd.name}'). Building one is not supported here yet — make that pick in GPC.`
-        )
+        // Recorded, not thrown: a file can already be in this state on open, and
+        // the operator should still be able to look. `commit` refuses it.
+        const msg = `'${opt.name}' (section '${sd.name}' of '${this.data.itemName}')`
+        if (!this.missingSubconfigs.includes(msg)) this.missingSubconfigs.push(msg)
       }
     }
     this.uch.updateAndWarn(this.dl, sd)
@@ -1343,7 +1360,9 @@ export interface ListTotals {
  * from the order's own catalog, picked or not, so re-pricing is a sum — it
  * needs no pricing engine and cannot drift from the file's catalog.
  */
-export function listTotals(list: ListState): ListTotals {
+export type OptionPricer = (articleName: string) => { msrp: Dec; dp: Dec } | null
+
+export function listTotals(list: ListState, pricer?: OptionPricer): ListTotals {
   let msrp: Dec | null = null
   let dp: Dec | null = null
   const problems: string[] = []
@@ -1367,8 +1386,16 @@ export function listTotals(list: ListState): ListTotals {
           factor = parseDecimal(String(Number(qd.toPrecision(15))))
         }
       }
-      const m = parseDecimalOrNull(o.msrp)
-      const d = parseDecimalOrNull(o.dp)
+      let m = parseDecimalOrNull(o.msrp)
+      let d = parseDecimalOrNull(o.dp)
+      if (m === null && d === null && pricer && !list.sectionDefs[sd.id].isSubconfig) {
+        // Older files store no price on the option; price it from the catalog.
+        const priced = pricer(o.name)
+        if (priced) {
+          m = priced.msrp
+          d = priced.dp
+        }
+      }
       if (m) msrp = add(msrp ?? fromInt(0), multiply(multiply(m, fromInt(n)), factor))
       if (d) dp = add(dp ?? fromInt(0), multiply(multiply(d, fromInt(n)), factor))
     }
@@ -1496,9 +1523,23 @@ export interface ReplayDiff {
   engine: { amount: number; mode: AmountMode }
 }
 
-function contextOf(order: OrderDocument): EngineContext {
+/**
+ * Who is configuring, and for which country. An order written before
+ * `DestinationNew` existed names the country in `<Destination>` as plain text;
+ * the configurator's legacy loader (OrderDataLegacyExt) looks it up by name or
+ * ISO in the catalog's country list. Skipping that leaves the destination
+ * blank, and every regional restriction silently stops applying — a
+ * Germany-only option then gets picked on a US order.
+ */
+function contextOf(order: OrderDocument, catalog: EngineCatalog): EngineContext {
   const dest = sub(order.root, 'DestinationNew')
-  return { username: text(order.root, 'Username') ?? '', iso: (dest && text(dest, 'Iso')) ?? '' }
+  let iso = (dest && str(dest, 'Iso')) ?? ''
+  if (!iso) {
+    const legacy = str(order.root, 'Destination')
+    const hit = legacy ? catalog.countries.find((c) => c.country === legacy || c.iso === legacy) : undefined
+    iso = hit?.iso ?? ''
+  }
+  return { username: text(order.root, 'Username') ?? '', iso }
 }
 
 function findItem(order: OrderDocument, no: string): { el: ElementValue; container: ElementValue } {
@@ -1528,15 +1569,40 @@ export class SystemEditor {
   readonly catalog: EngineCatalog
   readonly root: ListState
   private readonly handler: ListHandler
+  private readonly pricer: OptionPricer | undefined
+  /**
+   * Lists whose totals, re-summed as opened, do not match what the file
+   * stores. A system this editor cannot price as it stands cannot be priced
+   * after a change either, so `commit` refuses while this is non-empty.
+   */
+  readonly unpriceable: Array<{ no: string; itemName: string; stored: string; computed: string }>
 
-  constructor(order: OrderDocument, config: ElementValue | EngineCatalog, no: string) {
+  constructor(order: OrderDocument, config: ElementValue | EngineCatalog, no: string, pricer?: OptionPricer) {
     this.order = order
     this.catalog = config instanceof EngineCatalog ? config : new EngineCatalog(config)
+    this.pricer = pricer
     const { el, container } = findItem(order, no)
     this.root = new ListState(el, this.catalog, container)
     // Opening the item's window runs the list once.
-    this.handler = new ListHandler(contextOf(order), this.root, this.catalog)
+    this.handler = new ListHandler(contextOf(order, this.catalog), this.root, this.catalog)
     this.handler.process()
+    this.unpriceable = []
+    for (const list of this.root.tree()) {
+      const t = listTotals(list, pricer)
+      const storedM = parseDecimalOrNull(text(list.el, 'TotalMsrp'))
+      const storedD = parseDecimalOrNull(text(list.el, 'TotalDp'))
+      // A blank stored total is one the configurator never computed; nothing to check against.
+      if (storedM === null && storedD === null) continue
+      const same = (a: Dec | null, b: Dec | null) => compare(a ?? fromInt(0), b ?? fromInt(0)) === 0
+      if (!same(t.msrp, storedM) || !same(t.dp, storedD)) {
+        const show = (a: Dec | null, b: Dec | null) => `${a ? formatDecimal(a) : '—'} / ${b ? formatDecimal(b) : '—'}`
+        this.unpriceable.push({ no: list.no, itemName: list.itemName, stored: show(storedM, storedD), computed: show(t.msrp, t.dp) })
+      }
+    }
+  }
+
+  totals(list: ListState): ListTotals {
+    return listTotals(list, this.pricer)
   }
 
   /** Stored selections the engine does not reproduce. Empty for a file the configurator saved. */
@@ -1571,7 +1637,7 @@ export class SystemEditor {
         no: list.no,
         itemName: list.itemName,
         listName: list.listName,
-        totals: listTotals(list),
+        totals: this.totals(list),
         storedMsrp: text(list.el, 'TotalMsrp'),
         storedDp: text(list.el, 'TotalDp'),
         sections: list.sections.map((sd, i) => {
@@ -1679,6 +1745,11 @@ export class SystemEditor {
     return this.handler.removedSubconfigs
   }
 
+  /** Sub-configurations the rules call for that are not on the order; only GPC can build them. */
+  get missingSubconfigs(): string[] {
+    return this.handler.missingSubconfigs
+  }
+
   /** Sections the configurator would paint as incomplete. */
   incomplete(): Array<{ no: string; section: string; selection: Selection; description: string }> {
     const out: Array<{ no: string; section: string; selection: Selection; description: string }> = []
@@ -1699,8 +1770,21 @@ export class SystemEditor {
    */
   commit(): void {
     this.handler.process() // the configurator runs the list again when the item is saved
+    if (this.unpriceable.length > 0) {
+      const u = this.unpriceable[0]
+      throw new NeedsGpcError(
+        `Cannot re-price ${u.no} ${u.itemName}: as opened it sums to ${u.computed} but the file says ${u.stored}. ` +
+          'Make this change in GPC.'
+      )
+    }
+    if (this.missingSubconfigs.length > 0) {
+      throw new NeedsGpcError(
+        `This configuration needs a sub-configuration the order does not have: ${this.missingSubconfigs.join(', ')}. ` +
+          'Building one is not supported here yet — make this change in GPC.'
+      )
+    }
     const problems: string[] = []
-    for (const list of this.root.tree()) problems.push(...listTotals(list).problems)
+    for (const list of this.root.tree()) problems.push(...this.totals(list).problems)
     if (problems.length > 0) {
       throw new NeedsGpcError(`This change cannot be priced here: ${problems.join('; ')}. Make it in GPC.`)
     }
@@ -1711,7 +1795,7 @@ export class SystemEditor {
           setText(o.el, 'AmountMode', o.mode)
         }
       }
-      const t = listTotals(list)
+      const t = this.totals(list)
       list.el.members = list.el.members.map((m) => {
         if (m.name === 'TotalMsrp') return { name: m.name, value: t.msrp ? { kind: 'text', type: null, value: formatDecimal(t.msrp) } : { kind: 'nil' } }
         if (m.name === 'TotalDp') return { name: m.name, value: t.dp ? { kind: 'text', type: null, value: formatDecimal(t.dp) } : { kind: 'nil' } }

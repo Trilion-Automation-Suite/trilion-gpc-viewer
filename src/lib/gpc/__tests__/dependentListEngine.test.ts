@@ -119,6 +119,49 @@ describe('dependent-list rules engine', () => {
     expect(new TextDecoder().decode(serializeOrderXml(doc))).toBe(before)
   })
 
+  it('refuses to re-price a system whose stored total it cannot reproduce', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1 })
+    const line = (doc.root.members.find(m => m.name === 'DependentListsData')!.value as ElementValue).members[0].value as ElementValue
+    const total = line.members.findIndex(m => m.name === 'TotalMsrp')
+    line.members[total] = { name: 'TotalMsrp', value: { kind: 'text', type: null, value: '9999' } }
+    const editor = new SystemEditor(doc, config(), '1')
+    expect(editor.unpriceable).toEqual([{ no: '1', itemName: 'Rig', stored: '9999 / 1192', computed: '1490 / 1192' }])
+    click(editor, 'Lights', 'Light', 1)
+    expect(() => editor.commit()).toThrow(NeedsGpcError)
+  })
+
+  it('prices options the file stored without a price, from the catalog, and checks itself first', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1 })
+    // Blank every option's stored price, as GPC before 2.9 wrote them.
+    const line = (doc.root.members.find(m => m.name === 'DependentListsData')!.value as ElementValue).members[0].value as ElementValue
+    for (const s of (line.members.find(m => m.name === 'Sections')!.value as ElementValue).members) {
+      for (const a of ((s.value as ElementValue).members.find(m => m.name === 'SectionArticles')!.value as ElementValue).members) {
+        const el = a.value as ElementValue
+        el.members = el.members.map(m => (m.name === 'Msrp' || m.name === 'Dp' ? { name: m.name, value: { kind: 'nil' } } : m))
+      }
+    }
+    const prices: Record<string, [number, number]> = { 'V400 medium': [200, 160], 'Frame M': [60, 48], 'Base M': [1200, 960], 'Probe A': [30, 24], Light: [10, 8], 'New rig': [0, 0] }
+    const pricer = (name: string) => prices[name]
+      ? { msrp: { unscaled: BigInt(prices[name][0]), scale: 0 }, dp: { unscaled: BigInt(prices[name][1]), scale: 0 } }
+      : null
+    expect(new SystemEditor(doc, config(), '1').unpriceable).toHaveLength(1)
+    const editor = new SystemEditor(doc, config(), '1', pricer)
+    expect(editor.unpriceable).toEqual([])
+    click(editor, 'Lights', 'Light', 2)
+    editor.commit()
+    expect(text(line, 'TotalMsrp')).toBe('1510')
+  })
+
+  it('lets a sub-configuration be picked, and leaves building it to GPC', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1 })
+    const editor = new SystemEditor(doc, config(), '1')
+    click(editor, 'Care', 'Care Plan', 1)
+    expect(editor.missingSubconfigs).toEqual(["'Care Plan' (section 'Care' of 'Rig')"])
+    expect(() => editor.commit()).toThrow(/sub-configuration the order does not have/)
+    click(editor, 'Care', 'Care Plan', 0)
+    expect(editor.missingSubconfigs).toEqual([])
+  })
+
   it('names a missing system rather than editing something else', () => {
     expect(() => new SystemEditor(savedRig({ 'V100 small': 1, 'Probe B': 0 }), config(), '7')).toThrow(/No configured system numbered 7/)
   })

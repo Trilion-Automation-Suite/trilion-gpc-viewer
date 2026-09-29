@@ -38,7 +38,7 @@ const pre = (section: string, names: string[]) => `
   </Precondition>`
 
 interface Opt { name: string; pre?: string; imps?: string; max?: number; def?: number }
-interface Sec { name: string; mode: string; x?: number; y?: number; opts: Opt[]; note?: string }
+interface Sec { name: string; mode: string; x?: number; y?: number; opts: Opt[]; note?: string; sub?: boolean }
 
 const VOLUME = (name: string, frame: string, base: string): Opt => ({
   name,
@@ -67,13 +67,15 @@ const SECTIONS: Sec[] = [
     ],
   },
   { name: 'Lights', mode: 'OneOrMore', opts: [{ name: 'Light', max: 5 }] },
+  // Picking this attaches a whole child line; no fixture order carries one.
+  { name: 'Care', mode: 'ZeroOrOne', sub: true, opts: [{ name: 'Care Plan' }] },
 ]
 
 const PRICES: Record<string, [number, number]> = {
   'New rig': [0, 0], 'V100 small': [100, 80], 'V400 medium': [200, 160], 'V600 medium': [200, 160],
   'V900 large': [300, 240], 'Frame S': [50, 40], 'Frame M': [60, 48], 'Frame L': [70, 56],
   'Base S': [1000, 800], 'Base M': [1200, 960], 'Base L': [1500, 1200],
-  'Probe A': [30, 24], 'Probe B': [30, 24], 'Probe C': [35, 28], Light: [10, 8],
+  'Probe A': [30, 24], 'Probe B': [30, 24], 'Probe C': [35, 28], Light: [10, 8], 'Care Plan': [0, 0],
 }
 const RANKING: Record<string, number> = { 'Base S': 1, 'Base M': 2, 'Base L': 3 }
 
@@ -82,6 +84,7 @@ export const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
   <UsersData><Users><UsersItem><Username>tester</Username><DirectSales>false</DirectSales><OrderValueToGomModel>ApplySplit</OrderValueToGomModel></UsersItem></Users></UsersData>
   <ConfigurationItemsData><ConfigurationItems>
     <ConfigurationItem><Name>Rig</Name><WorksheetArticleFilter>RIG</WorksheetArticleFilter><ItemType>DependentList</ItemType></ConfigurationItem>
+    <ConfigurationItem><Name>Care Plan</Name><WorksheetArticleFilter>CARE</WorksheetArticleFilter><ItemType>DependentList</ItemType></ConfigurationItem>
   </ConfigurationItems></ConfigurationItemsData>
   <ArticlesData><Articles>
     ${Object.keys(PRICES).map(n => `<Article><LongName>${n}</LongName>${RANKING[n] ? `<Ranking>${RANKING[n]}</Ranking>` : ''}<Unit>pcs</Unit></Article>`).join('\n    ')}
@@ -102,7 +105,7 @@ export const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
             <Step>1</Step><DefaultAmount>${o.def ?? 0}</DefaultAmount><TechCategory>0</TechCategory>
           </SectionArticle>`).join('')}
         </Articles>
-        <IsSubconfiguration>false</IsSubconfiguration>
+        <IsSubconfiguration>${s.sub ? 'true' : 'false'}</IsSubconfiguration>
       </Section>`).join('')}
     </Sections>
   </DependentList></DependentLists></DependentListsData>
@@ -128,8 +131,8 @@ export function orderWith(picks: Record<string, number>): string {
       <ConfigurationItem><Name>Rig</Name><Parameter /><WorksheetArticleFilter>RIG</WorksheetArticleFilter></ConfigurationItem>
       <UseInCalculation>true</UseInCalculation>
       <No>1</No>
-      <TotalDp>0</TotalDp>
-      <TotalMsrp>0</TotalMsrp>
+      <TotalDp xsi:nil="true" />
+      <TotalMsrp xsi:nil="true" />
       <Sections>${sections}
       </Sections>
       <SubConfigurations />

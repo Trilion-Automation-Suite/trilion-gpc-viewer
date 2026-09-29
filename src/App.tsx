@@ -28,6 +28,7 @@ import { readPdbConfig } from './lib/gpc/blankOrder.ts'
 import type { OrderDocument } from './lib/gpc/orderXml.ts'
 import { addCatalogArticle } from './lib/gpc/addItem.ts'
 import { EngineCatalog, SystemEditor } from './lib/gpc/dependentListEngine.ts'
+import { optionPricer } from './lib/gpc/dependentList.ts'
 import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
@@ -403,7 +404,7 @@ export function App() {
         engineCatalogCache.current = { key, catalog: new EngineCatalog(readPdbConfig(pdb)) }
       }
       const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
-      return new SystemEditor(doc, engineCatalogCache.current.catalog, no)
+      return new SystemEditor(doc, engineCatalogCache.current.catalog, no, optionPricer(doc, pdb))
     } catch (err) {
       setAddItemError(err instanceof Error ? err.message : String(err))
       return null

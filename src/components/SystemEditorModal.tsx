@@ -265,6 +265,19 @@ export function SystemEditorModal({
               before sending.
             </p>
           )}
+          {editor.unpriceable.length > 0 && (
+            <p className="sysed-warning">
+              This system's stored total cannot be reproduced from its options
+              ({editor.unpriceable.map(u => `${u.no}: file ${u.stored}, options sum to ${u.computed}`).join('; ')}),
+              so a change could not be priced correctly. You can explore options here; apply the change in GPC.
+            </p>
+          )}
+          {editor.missingSubconfigs.length > 0 && (
+            <p className="sysed-warning">
+              These choices need a sub-configuration the order does not have yet:{' '}
+              {editor.missingSubconfigs.join(', ')}. GPC builds it; this change has to be finished there.
+            </p>
+          )}
           {error && <p className="sysed-error" role="alert">{error}</p>}
         </header>
 

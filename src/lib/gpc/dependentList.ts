@@ -546,6 +546,18 @@ function optionPrice(ctx: PriceContext, articleName: string): { msrp: Dec; dp: D
   }
 }
 
+/**
+ * Prices a dependent-list option by article name from the order's own catalog,
+ * in the order's price list and currency — what `buildScreen` stores on every
+ * option. The system editor falls back to it for files whose options carry no
+ * stored price (the configurator did not write them before 2.9), and trusts it
+ * only after it has reproduced the file's own totals.
+ */
+export function optionPricer(order: OrderDocument, pdb: GpcContainer): (articleName: string) => { msrp: Dec; dp: Dec } | null {
+  const ctx = priceContext(order, pdb, {})
+  return (articleName) => optionPrice(ctx, articleName)
+}
+
 function priceContext(
   order: OrderDocument,
   pdb: GpcContainer,
