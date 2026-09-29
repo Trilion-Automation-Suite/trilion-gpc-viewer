@@ -165,16 +165,28 @@ array, not in separate entries — that is how GPC groups them.
   "type": "sma",
   "dongleId": "3-7619774",
   "endOldContract": "2026-07",        // YYYY-MM or YYYY-MM-DD
-  "startNewContract": "2026-10",      // optional; omit to start the next month
+  "startNewContract": "2026-10",      // optional; see below for the default
   "months": 12,                        // optional; omitted means 12, the minimum
   "articles": [
     "EXT SMA for Sensor Driver ARAMIS",
     "EXT SMA for ZEISS CORRELATE - Pro Line"
   ],
+  "sapNrs": ["666031-2000-321", "666031-2000-014"],  // optional, by position
   "licenseUserEmail": "licensing@trilion.com",
   "licenseUserName": "Trilion Licensing"
 }
 ```
+
+`sapNrs`, when given, is the ZEISS SAP number of each entry in `articles`, by
+position, and is preferred over the name exactly as for an `article` item. An
+ERP's vendor row can keep the article name it was created with — "EXT SMA for
+ZEISS Correlate Professional Line" beside a catalog that now says "EXT SMA for
+ZEISS CORRELATE - Pro Line" — while its number stays right; the viewer uses
+the catalog's name and says so in the preview.
+
+With no `startNewContract`, the new term starts the month after
+`endOldContract`, **or the first of next month if that has already passed**: a
+lapsed agreement is renewed from now, not from the month it lapsed.
 
 **Terms run in whole months.** A start is snapped to the first of its month and
 an end to the last day of one; there is no part-month agreement, and the

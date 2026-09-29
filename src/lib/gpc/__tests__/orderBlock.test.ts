@@ -240,6 +240,26 @@ describe('planning, before anything is applied', () => {
     expect(plan.items[0].problem).toMatch(/at least 12 months/)
   })
 
+  it('finds an agreement by its SAP number when the vendor row carries an old name', () => {
+    // An ERP row keeps the article name it was created with; the number is what stays true.
+    const { pdb } = build()
+    const plan = planOrderBlock(
+      { ...BLOCK, items: [{ type: 'sma', dongleId: 'd1', endOldContract: '2026-07', articles: ['EXT SMA for Sensor Driver (old name)'], sapNrs: ['SAP-SMA'] }] },
+      pdb
+    )
+    expect(plan.items[0].resolved).toMatchObject({ kind: 'sma', articleNames: ['EXT SMA for Sensor Driver ARAMIS'] })
+    expect(plan.warnings.join('\n')).toContain('"EXT SMA for Sensor Driver (old name)" is "EXT SMA for Sensor Driver ARAMIS" in this catalog')
+  })
+
+  it('refuses an agreement the SMA list does not offer, by name or number', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock(
+      { ...BLOCK, items: [{ type: 'sma', dongleId: 'd1', endOldContract: '2026-07', articles: ['Nothing Like It'] }] },
+      pdb
+    )
+    expect(plan.items[0].problem).toMatch(/is not a maintenance agreement in this catalog's SMA list/)
+  })
+
   it('names what a half-written item is missing', () => {
     const { pdb } = build()
     const plan = planOrderBlock(

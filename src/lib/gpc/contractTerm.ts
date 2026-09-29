@@ -86,3 +86,16 @@ export function nextMonthStart(day: string): string {
   if (!y) return ''
   return new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10)
 }
+
+/**
+ * When a renewal pasted without a start begins: the month after the old
+ * agreement ended, but never in the past. An agreement that lapsed years ago is
+ * renewed from the first of next month — cover cannot be bought backwards, and
+ * a term dated 2023 on a 2026 order would be over before it was signed.
+ */
+export function renewalStart(endOldContract: string, today: Date = new Date()): string {
+  const afterOld = nextMonthStart(endOldContract)
+  const local = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`
+  const nextMonth = nextMonthStart(local)
+  return afterOld > nextMonth ? afterOld : nextMonth
+}

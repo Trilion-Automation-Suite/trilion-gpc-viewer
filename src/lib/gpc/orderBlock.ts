@@ -20,6 +20,8 @@ import { licenseOptions } from './licenses.ts'
 import type { LicenseOption } from './licenses.ts'
 import { MINIMUM_CONTRACT_MONTHS } from './contractTerm.ts'
 import { ENUM_VALUES } from './memberOrder.ts'
+import { listOptions } from './catalogIndex.ts'
+import { smaListName } from './sma.ts'
 import { EngineCatalog } from './dependentListEngine.ts'
 import { findSystems } from './systemAssembly.ts'
 import type { ArticleLine, SystemMatch } from './systemAssembly.ts'
@@ -79,6 +81,12 @@ export interface SmaItem {
   startNewContract?: string
   months?: number
   articles: string[]
+  /**
+   * The ZEISS SAP number of each entry in `articles`, by position. Preferred
+   * over the name, as for an article: an ERP's vendor row can carry an old
+   * name beside a current number.
+   */
+  sapNrs?: string[]
   licenseUserEmail?: string
   licenseUserName?: string
 }
@@ -376,8 +384,38 @@ export function planOrderBlock(
       case 'sma': {
         if (!item.dongleId) return { index, item, problem: 'A maintenance agreement needs a "dongleId".' }
         if (!item.endOldContract) return { index, item, problem: 'A maintenance agreement needs "endOldContract".' }
-        const names = Array.isArray(item.articles) ? item.articles.filter(Boolean) : []
-        if (names.length === 0) return { index, item, problem: 'A maintenance agreement needs at least one entry in "articles".' }
+        const given = Array.isArray(item.articles) ? item.articles : []
+        if (given.filter(Boolean).length === 0) {
+          return { index, item, problem: 'A maintenance agreement needs at least one entry in "articles".' }
+        }
+        // Each agreement by SAP number first, then by name, against what the
+        // catalog's SMA list offers — so a vendor row with a stale name still
+        // lands on the right agreement, and says so.
+        const offered = new Set(smaOptionNames(config))
+        const names: string[] = []
+        for (let i = 0; i < given.length; i++) {
+          const name = given[i]
+          const sap = Array.isArray(item.sapNrs) ? item.sapNrs[i] : undefined
+          const bySapName = sap ? (bySap.get(sap) ?? []).filter((n) => offered.has(n)) : []
+          if (bySapName.length === 1) {
+            if (name && name !== bySapName[0]) {
+              warnings.push(`Dongle ${item.dongleId}: "${name}" is "${bySapName[0]}" in this catalog (SAP ${sap}); using the catalog's name.`)
+            }
+            names.push(bySapName[0])
+          } else if (bySapName.length > 1 && name && bySapName.includes(name)) {
+            names.push(name)
+          } else if (name && offered.has(name)) {
+            names.push(name)
+          } else {
+            return {
+              index,
+              item,
+              problem: sap
+                ? `Neither SAP ${sap} nor "${name}" is a maintenance agreement in this catalog's SMA list.`
+                : `"${name}" is not a maintenance agreement in this catalog's SMA list, and the block gives no SAP number to find it by.`,
+            }
+          }
+        }
         if (item.months !== undefined && (!Number.isFinite(item.months) || item.months < MINIMUM_CONTRACT_MONTHS)) {
           return { index, item, problem: `A term is at least ${MINIMUM_CONTRACT_MONTHS} months; the block says ${JSON.stringify(item.months)}.` }
         }
@@ -416,6 +454,15 @@ export function planOrderBlock(
     get ok() {
       return items.every((i) => i.resolved !== undefined)
     },
+  }
+}
+
+/** Every agreement the catalog's SMA list offers, by name. */
+function smaOptionNames(config: ElementValue): string[] {
+  try {
+    return listOptions(config, smaListName(config)).map((o) => o.articleName)
+  } catch {
+    return []
   }
 }
 

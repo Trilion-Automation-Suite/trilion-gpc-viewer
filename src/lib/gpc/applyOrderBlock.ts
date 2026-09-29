@@ -19,6 +19,7 @@ import { assembleSystem } from './systemAssembly.ts'
 import type { ArticleLine } from './systemAssembly.ts'
 import { currencyRow, readPdbConfig } from './blankOrder.ts'
 import { addLicense } from './licenses.ts'
+import { renewalStart } from './contractTerm.ts'
 import { DEFAULT_LICENSE_USER } from './licenseUser.ts'
 import { addSmaExtension } from './sma.ts'
 import type { OrderBlockPlan } from './orderBlock.ts'
@@ -156,7 +157,9 @@ export function applyOrderBlockItems(
         addSmaExtension(order, pdb, resolved.articleNames, {
           dongleId: resolved.item.dongleId,
           endOldContract: resolved.item.endOldContract,
-          startNewContract: resolved.item.startNewContract,
+          // Omitted means "the renewal": the month after the old agreement, or
+          // the first of next month when that has already passed.
+          startNewContract: resolved.item.startNewContract || renewalStart(resolved.item.endOldContract),
           months: resolved.item.months,
           licenseUserEmail: resolved.item.licenseUserEmail || DEFAULT_LICENSE_USER.email,
           licenseUserName: resolved.item.licenseUserName || DEFAULT_LICENSE_USER.name,

@@ -60,6 +60,17 @@ export function PasteOrderModal({
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
       <div className="paste-order-modal" role="dialog" aria-modal="true" aria-label="Paste order">
         <h3 className="modal-title">{initialText ? 'Order from a link' : 'Paste Order'}</h3>
+        <div className="modal-actions paste-order-actions">
+          <button type="button" className="modal-btn modal-btn-cancel" onClick={onCancel}>Cancel</button>
+          <button
+            type="button"
+            className="modal-btn modal-btn-add"
+            disabled={!plan || (resolved.length === 0 && changes.length === 0)}
+            onClick={() => plan && onApply(plan)}
+          >
+            {unresolved.length > 0 ? `Apply the other ${resolved.length + changes.length}` : 'Apply'}
+          </button>
+        </div>
         {initialText && (
           <p className="paste-order-hint">
             This order arrived in the address bar. Nothing is applied until you say so.
@@ -154,17 +165,6 @@ export function PasteOrderModal({
           </div>
         )}
 
-        <div className="modal-actions">
-          <button type="button" className="modal-btn modal-btn-cancel" onClick={onCancel}>Cancel</button>
-          <button
-            type="button"
-            className="modal-btn modal-btn-add"
-            disabled={!plan || (resolved.length === 0 && changes.length === 0)}
-            onClick={() => plan && onApply(plan)}
-          >
-            {unresolved.length > 0 ? `Apply the other ${resolved.length + changes.length}` : 'Apply'}
-          </button>
-        </div>
       </div>
     </div>
   )
