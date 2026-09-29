@@ -1024,23 +1024,27 @@ class ListHandler {
   private subs: ListHandler[] = []
   private initDone = false
   readonly removedSubconfigs: string[]
-  /** Sub-configurations the rules want added; building one is left to GPC. */
+  /** Sub-configurations the rules want added and nothing could build. */
   readonly missingSubconfigs: string[]
+  /** Sub-configurations built during this session, by item name. */
+  readonly addedSubconfigs: string[]
+  private readonly buildSubconfig: SubconfigBuilder | undefined
 
   constructor(
     ctx: EngineContext,
     data: ListState,
     catalog: EngineCatalog,
     uch?: UserChoiceHandler,
-    removed?: string[],
-    missing?: string[]
+    shared?: { removed: string[]; missing: string[]; added: string[]; build?: SubconfigBuilder }
   ) {
     this.ctx = ctx
     this.data = data
     this.catalog = catalog
     this.uch = uch ?? new UserChoiceHandler()
-    this.removedSubconfigs = removed ?? []
-    this.missingSubconfigs = missing ?? []
+    this.removedSubconfigs = shared?.removed ?? []
+    this.missingSubconfigs = shared?.missing ?? []
+    this.addedSubconfigs = shared?.added ?? []
+    this.buildSubconfig = shared?.build
     this.updateRestrictions()
     this.resetRestricted()
   }
@@ -1153,7 +1157,12 @@ class ListHandler {
     if (!h) {
       const sc = this.data.subconfigs.find((s) => s.itemName === ci.name)
       if (sc instanceof ListState) {
-        h = new ListHandler(this.ctx, sc, this.catalog, this.uch, this.removedSubconfigs, this.missingSubconfigs)
+        h = new ListHandler(this.ctx, sc, this.catalog, this.uch, {
+          removed: this.removedSubconfigs,
+          missing: this.missingSubconfigs,
+          added: this.addedSubconfigs,
+          build: this.buildSubconfig,
+        })
         this.subs.push(h)
       }
     }
@@ -1161,12 +1170,15 @@ class ListHandler {
   }
 
   private removeSubconfig(sc: ListState | { el: ElementValue; itemName: string }): void {
+    const added = this.addedSubconfigs.indexOf(sc.itemName)
+    if (added >= 0) this.addedSubconfigs.splice(added, 1)
     const i = this.data.subconfigs.indexOf(sc)
     this.data.subconfigs.splice(i, 1)
     const container = sub(this.data.el, 'SubConfigurations')
     if (container) container.members = container.members.filter((m) => m.value !== sc.el)
     this.subs = this.subs.filter((h) => h.data !== sc)
-    this.removedSubconfigs.push(sc.itemName)
+    // Built and dropped again in one session is no change at all.
+    if (added < 0) this.removedSubconfigs.push(sc.itemName)
   }
 
   // processing
@@ -1243,10 +1255,21 @@ class ListHandler {
           sd.isChanged = true
         }
       } else if (!sc) {
-        // Recorded, not thrown: a file can already be in this state on open, and
-        // the operator should still be able to look. `commit` refuses it.
-        const msg = `'${opt.name}' (section '${sd.name}' of '${this.data.itemName}')`
-        if (!this.missingSubconfigs.includes(msg)) this.missingSubconfigs.push(msg)
+        if (this.buildSubconfig) {
+          // DependentListHandler.GetSubHandler(createNewIfNotExists: true): build
+          // the child now; the pass processes its sections straight after.
+          const child = this.buildSubconfig(this.data.el, opt.name)
+          this.data.subconfigs.push(new ListState(child, this.catalog, sub(this.data.el, 'SubConfigurations')))
+          this.addedSubconfigs.push(opt.name)
+          this.removedSubconfigs.splice(0, this.removedSubconfigs.length,
+            ...this.removedSubconfigs.filter((n) => n !== opt.name))
+          sd.isChanged = true
+        } else {
+          // Recorded, not thrown: a file can already be in this state on open,
+          // and the operator should still be able to look. `commit` refuses it.
+          const msg = `'${opt.name}' (section '${sd.name}' of '${this.data.itemName}')`
+          if (!this.missingSubconfigs.includes(msg)) this.missingSubconfigs.push(msg)
+        }
       }
     }
     this.uch.updateAndWarn(this.dl, sd)
@@ -1361,6 +1384,23 @@ export interface ListTotals {
  * needs no pricing engine and cannot drift from the file's catalog.
  */
 export type OptionPricer = (articleName: string) => { msrp: Dec; dp: Dec } | null
+
+/** Builds a sub-configuration under `parent` and returns its element, already in place. */
+export type SubconfigBuilder = (parent: ElementValue, itemName: string) => ElementValue
+
+export interface EditorOptions {
+  /** Prices options the file stored without one. */
+  pricer?: OptionPricer
+  /** Builds a sub-configuration the rules call for; without it such a pick is refused at commit. */
+  buildSubconfig?: SubconfigBuilder
+  /** Re-stamps sub-configuration numbers after one is added or removed. */
+  renumber?: () => void
+  /**
+   * A line just built from the catalog: its stored totals predate the rules'
+   * first pass, so there is nothing to check them against.
+   */
+  fresh?: boolean
+}
 
 export function listTotals(list: ListState, pricer?: OptionPricer): ListTotals {
   let msrp: Dec | null = null
@@ -1577,17 +1617,26 @@ export class SystemEditor {
    */
   readonly unpriceable: Array<{ no: string; itemName: string; stored: string; computed: string }>
 
-  constructor(order: OrderDocument, config: ElementValue | EngineCatalog, no: string, pricer?: OptionPricer) {
+  private readonly renumber: (() => void) | undefined
+
+  constructor(order: OrderDocument, config: ElementValue | EngineCatalog, no: string, options: EditorOptions = {}) {
     this.order = order
     this.catalog = config instanceof EngineCatalog ? config : new EngineCatalog(config)
-    this.pricer = pricer
+    this.pricer = options.pricer
+    this.renumber = options.renumber
+    const pricer = options.pricer
     const { el, container } = findItem(order, no)
     this.root = new ListState(el, this.catalog, container)
     // Opening the item's window runs the list once.
-    this.handler = new ListHandler(contextOf(order, this.catalog), this.root, this.catalog)
+    this.handler = new ListHandler(contextOf(order, this.catalog), this.root, this.catalog, undefined, {
+      removed: [],
+      missing: [],
+      added: [],
+      build: options.buildSubconfig,
+    })
     this.handler.process()
     this.unpriceable = []
-    for (const list of this.root.tree()) {
+    for (const list of options.fresh ? [] : this.root.tree()) {
       const t = listTotals(list, pricer)
       const storedM = parseDecimalOrNull(text(list.el, 'TotalMsrp'))
       const storedD = parseDecimalOrNull(text(list.el, 'TotalDp'))
@@ -1745,7 +1794,12 @@ export class SystemEditor {
     return this.handler.removedSubconfigs
   }
 
-  /** Sub-configurations the rules call for that are not on the order; only GPC can build them. */
+  /** Sub-configurations built by this session's picks. */
+  get addedSubconfigs(): string[] {
+    return this.handler.addedSubconfigs
+  }
+
+  /** Sub-configurations the rules call for that are not on the order and could not be built here. */
   get missingSubconfigs(): string[] {
     return this.handler.missingSubconfigs
   }
@@ -1802,6 +1856,7 @@ export class SystemEditor {
         return m
       })
     }
+    this.renumber?.()
     for (const [name, value] of Object.entries(orderTotals(this.order, this.catalog))) {
       if (member(this.order.root, name) !== null) setText(this.order.root, name, formatDecimal(value))
     }

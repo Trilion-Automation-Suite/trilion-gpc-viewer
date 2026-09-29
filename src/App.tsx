@@ -28,7 +28,14 @@ import { readPdbConfig } from './lib/gpc/blankOrder.ts'
 import type { OrderDocument } from './lib/gpc/orderXml.ts'
 import { addCatalogArticle } from './lib/gpc/addItem.ts'
 import { EngineCatalog, SystemEditor } from './lib/gpc/dependentListEngine.ts'
-import { optionPricer } from './lib/gpc/dependentList.ts'
+import {
+  addSubConfiguration,
+  buildableItems,
+  optionPricer,
+  renumberSubConfigurations,
+  startDependentList,
+} from './lib/gpc/dependentList.ts'
+import type { BuildableItem } from './lib/gpc/dependentList.ts'
 import { catalogContainer } from './lib/gpc/catalogContainer.ts'
 import { loadGpcFile, createNewOrder, parseDecryptedPackage } from './lib/index.ts'
 import { loadPdbFile } from './lib/loadPdbFile.ts'
@@ -391,7 +398,7 @@ export function App() {
    * Opens one configured system for editing, on a fresh parse of the order so
    * that cancelling leaves nothing behind.
    */
-  const openSystemEditor = useCallback((no: string): SystemEditor | null => {
+  const openSystemEditor = useCallback((no: string | null, newItem?: string): SystemEditor | null => {
     if (state.status !== 'loaded') return null
     const pdb = getPdb()
     if (!pdb || !state.result.configXml) {
@@ -405,11 +412,36 @@ export function App() {
         engineCatalogCache.current = { key, catalog: new EngineCatalog(readPdbConfig(pdb)) }
       }
       const doc = parseOrderXml(new TextEncoder().encode(state.result.rawOrderXml))
-      return new SystemEditor(doc, engineCatalogCache.current.catalog, no, optionPricer(doc, pdb))
+      // A new line is built on the working copy too, so Cancel leaves no trace of it.
+      const itemNo = newItem ? startDependentList(doc, pdb, newItem) : no
+      if (!itemNo) return null
+      return new SystemEditor(doc, engineCatalogCache.current.catalog, itemNo, {
+        pricer: optionPricer(doc, pdb),
+        buildSubconfig: (parent, itemName) => addSubConfiguration(doc, pdb, parent, itemName),
+        renumber: () => renumberSubConfigurations(doc),
+        fresh: newItem !== undefined,
+      })
     } catch (err) {
       setAddItemError(err instanceof Error ? err.message : String(err))
       return null
     }
+  }, [state, getPdb])
+
+  /** What the catalog lets an operator start a new line from, for the Add Product search. */
+  const buildableCache = useRef<{ key: string; items: BuildableItem[] } | null>(null)
+  const getBuildableItems = useCallback((): BuildableItem[] => {
+    if (state.status !== 'loaded' || !state.result.configXml) return []
+    const pdb = getPdb()
+    if (!pdb) return []
+    const key = String(state.result.configXml.length)
+    if (buildableCache.current?.key !== key) {
+      try {
+        buildableCache.current = { key, items: buildableItems(readPdbConfig(pdb)) }
+      } catch {
+        buildableCache.current = { key, items: [] }
+      }
+    }
+    return buildableCache.current.items
   }, [state, getPdb])
 
   /** Commits an editor's working copy. `commit` throws rather than write a total it cannot price. */
@@ -978,6 +1010,7 @@ export function App() {
                   linkedOrder={linkedOrder}
                   onLinkedOrderHandled={() => setLinkedOrder(null)}
                   openSystemEditor={openSystemEditor}
+                  getBuildableItems={getBuildableItems}
                   onApplySystem={handleApplySystem}
                 />
               )}

@@ -172,7 +172,7 @@
 }
 
 .modal-search-results {
-  max-height: 200px;
+  max-height: 260px;
   overflow-y: auto;
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -194,6 +194,48 @@
 .modal-search-meta { display: flex; gap: 8px; align-items: center; }
 .modal-search-sap { font-size: 0.72rem; color: var(--color-muted, #888); font-family: monospace; }
 .modal-search-price { font-size: 0.72rem; color: var(--color-muted, #888); }
+.modal-search-category {
+  font-size: 0.68rem;
+  color: var(--color-muted, #888);
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--pill-bg, rgba(0, 0, 0, 0.06));
+}
+
+.modal-search-group {
+  display: block;
+  padding: 6px 10px 2px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-muted, #888);
+}
+
+/* New systems start a whole configuration, so they sit apart from articles. */
+.modal-search-systems {
+  margin-top: 4px;
+  border: 1px solid var(--accent, #3498db);
+  border-radius: 6px;
+  background: var(--accent-subtle, rgba(52, 152, 219, 0.08));
+}
+
+.modal-search-system {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 6px 10px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--color-border);
+  cursor: pointer;
+}
+
+.modal-search-system:hover { background: var(--accent-hover, rgba(52, 152, 219, 0.12)); }
 
 .modal-selected {
   background: var(--color-accent-subtle, rgba(59,130,246,.08));

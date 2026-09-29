@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { serializeOrderXml, text } from '../orderXml.ts'
 import type { ElementValue } from '../orderXml.ts'
 import { EngineCatalog, NeedsGpcError, PickError, SystemEditor, replayOrder } from '../dependentListEngine.ts'
-import { config, savedRig } from './rigFixture.ts'
+import { config, orderWith, parse, rigPdb, savedRig } from './rigFixture.ts'
+import { addSubConfiguration, renumberSubConfigurations, startDependentList } from '../dependentList.ts'
 
 function picked(editor: SystemEditor, section: string): Record<string, string> {
   const s = editor.view()[0].sections.find(x => x.name === section)!
@@ -145,7 +146,7 @@ describe('dependent-list rules engine', () => {
       ? { msrp: { unscaled: BigInt(prices[name][0]), scale: 0 }, dp: { unscaled: BigInt(prices[name][1]), scale: 0 } }
       : null
     expect(new SystemEditor(doc, config(), '1').unpriceable).toHaveLength(1)
-    const editor = new SystemEditor(doc, config(), '1', pricer)
+    const editor = new SystemEditor(doc, config(), '1', { pricer })
     expect(editor.unpriceable).toEqual([])
     click(editor, 'Lights', 'Light', 2)
     editor.commit()
@@ -160,6 +161,47 @@ describe('dependent-list rules engine', () => {
     expect(() => editor.commit()).toThrow(/sub-configuration the order does not have/)
     click(editor, 'Care', 'Care Plan', 0)
     expect(editor.missingSubconfigs).toEqual([])
+  })
+
+  it('builds a sub-configuration the rules call for, when it is given a builder', () => {
+    const doc = savedRig({ 'V400 medium': 1, 'Probe A': 1 })
+    const editor = new SystemEditor(doc, config(), '1', {
+      buildSubconfig: (parent, name) => addSubConfiguration(doc, rigPdb(), parent, name),
+      renumber: () => renumberSubConfigurations(doc),
+    })
+    click(editor, 'Care', 'Care Plan', 1)
+    expect(editor.missingSubconfigs).toEqual([])
+    expect(editor.addedSubconfigs).toEqual(['Care Plan'])
+    // The child's own rules ran: its lone option is forced on.
+    const child = editor.view()[1]
+    expect(child.no).toBe('1.1')
+    expect(child.sections[0].options.map(o => `${o.name} ${o.amount} ${o.mode}`)).toEqual(['Care Year 1 SectionSpecialFunction'])
+    editor.commit()
+    expect(replayOrder(doc, config())).toEqual([])
+    // Unticking it again takes the child away.
+    const again = new SystemEditor(doc, config(), '1')
+    click(again, 'Care', 'Care Plan', 0)
+    expect(again.removedSubconfigs).toEqual(['Care Plan'])
+  })
+
+  it('starts a new system with nothing picked and lets the rules fill it in', () => {
+    // An order that has no rig yet.
+    const doc = parse(orderWith({}).replace(/<DependentListsData>[\s\S]*<\/DependentListsData>/, '<DependentListsData />'))
+    const no = startDependentList(doc, rigPdb(), 'Rig')
+    expect(no).toBe('1')
+    const editor = new SystemEditor(doc, config(), no, { fresh: true })
+    expect(picked(editor, 'System Type')).toEqual({ 'New rig': '1 SectionSpecialFunction' })
+    // A new rig needs at least one volume, and until one implies it the pick-one
+    // base unit is empty too; the volume is the operator's call.
+    expect(editor.incomplete().map(i => i.section)).toEqual(['Volumes', 'Base Unit'])
+    click(editor, 'Volumes', 'V900 large', 1)
+    expect(picked(editor, 'Base Unit')).toEqual({ 'Base L': '1 Implication' })
+    // Probe B and C both qualify, so the operator must choose one.
+    expect(editor.incomplete().map(i => i.section)).toEqual(['Probe'])
+    click(editor, 'Probe', 'Probe C', 1)
+    expect(editor.incomplete()).toEqual([])
+    editor.commit()
+    expect(replayOrder(doc, config())).toEqual([])
   })
 
   it('names a missing system rather than editing something else', () => {

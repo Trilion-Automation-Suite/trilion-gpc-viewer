@@ -1,6 +1,7 @@
 import { parseOrderXml, serializeOrderXml } from '../orderXml.ts'
 import type { ElementValue, OrderDocument } from '../orderXml.ts'
 import { SystemEditor } from '../dependentListEngine.ts'
+import type { GpcContainer } from '../container.ts'
 
 /**
  * A miniature, fictional measuring rig with the rule shapes a real system uses:
@@ -108,6 +109,20 @@ export const CONFIG = `<?xml version="1.0" encoding="utf-8"?>
         <IsSubconfiguration>${s.sub ? 'true' : 'false'}</IsSubconfiguration>
       </Section>`).join('')}
     </Sections>
+  </DependentList>
+  <DependentList>
+    <DependentListName>CARE</DependentListName>
+    <Sections>
+      <Section>
+        <LongName>Coverage</LongName><SectionSpecialFunction>None</SectionSpecialFunction><MandatoryComment>false</MandatoryComment>
+        <Description />
+        <Selection><SelectionMode>ExactlyOne</SelectionMode></Selection>
+        <Articles>
+          <SectionArticle><LongName>Care Year</LongName><Preconditions /><Implications /><Step>1</Step><DefaultAmount>1</DefaultAmount><TechCategory>0</TechCategory></SectionArticle>
+        </Articles>
+        <IsSubconfiguration>false</IsSubconfiguration>
+      </Section>
+    </Sections>
   </DependentList></DependentLists></DependentListsData>
 </AdministrationData>`
 
@@ -147,12 +162,20 @@ export function orderWith(picks: Record<string, number>): string {
   <Dp>0</Dp>
   <OrderValueToGom>0</OrderValueToGom>
   <OrderValueToGomWithHandlingFee>0</OrderValueToGomWithHandlingFee>
+  <PriceList>Partner</PriceList>
   <Username>tester</Username>
 </OrderData>`
 }
 
 export const config = (): ElementValue =>
   parseOrderXml(new TextEncoder().encode(CONFIG.replace('<AdministrationData>', '<OrderData>').replace('</AdministrationData>', '</OrderData>'))).root
+
+/** The fixture catalog as the container the add-item path reads. */
+export const rigPdb = (): GpcContainer => ({
+  dosTime: 0,
+  dosDate: 0,
+  entries: [{ name: 'config.xml', data: new TextEncoder().encode(CONFIG), method: 8 }],
+})
 
 export const parse = (xml: string): OrderDocument => parseOrderXml(new TextEncoder().encode(xml))
 

@@ -34,6 +34,7 @@
  */
 import type { GpcContainer } from './container.ts'
 import type { ElementValue, OrderDocument, OrderValue } from './orderXml.ts'
+import { setMember } from './orderXml.ts'
 import { readPdbConfig } from './blankOrder.ts'
 import type { Dec } from './decimal.ts'
 import { add, divide, fromInt, isZero, multiply } from './decimal.ts'
@@ -196,6 +197,63 @@ export function addDependentList(
   list.members.push({ name: 'DependentListScreenData', value: screen })
   renumberSubConfigurations(order)
   return order
+}
+
+/**
+ * The configuration items an operator can start a line from: every dependent
+ * list the catalog does not reserve for use inside another (`AsSubItemOnly`).
+ * Systems, accessories, upgrades, services and licences, grouped as the
+ * catalog groups them.
+ */
+export interface BuildableItem {
+  name: string
+  group: string
+}
+
+export function buildableItems(config: ElementValue): BuildableItem[] {
+  const items = kids(sub(section(config, 'ConfigurationItemsData'), 'ConfigurationItems'))
+  return items
+    .filter((c) => field(c, 'ItemType') === 'DependentList' && field(c, 'AsSubItemOnly') !== 'true')
+    .map((c) => ({ name: field(c, 'Name') ?? '', group: field(c, 'GroupLevel1') ?? '' }))
+    .filter((c) => c.name !== '')
+}
+
+/**
+ * Starts a new line for a dependent list with nothing picked, and returns its
+ * number. The option tree and every option's price come from the catalog;
+ * what the rules then turn on is the system editor's job, as it is the
+ * configurator's when its window opens on a new item.
+ */
+export function startDependentList(order: OrderDocument, pdb: GpcContainer, itemName: string): string {
+  const no = String(nextItemNumber(order))
+  addDependentList(order, pdb, itemName)
+  return no
+}
+
+/**
+ * Builds a sub-configuration the rules call for — Training, an in-system SMA
+ * — under `parent`, and numbers it. `OrderFactoryExt.Create` plus
+ * `CalculatePrices` in the configurator; here the same `buildScreen` a new
+ * line uses. Returns the child element, already in place.
+ */
+export function addSubConfiguration(
+  order: OrderDocument,
+  pdb: GpcContainer,
+  parent: ElementValue,
+  itemName: string
+): ElementValue {
+  const ctx = priceContext(order, pdb, {})
+  const useInCalculation = field(parent, 'UseInCalculation') !== 'false'
+  const child = buildScreen(ctx, findDependentListItem(ctx.config, itemName), { useInCalculation, no: '' })
+  child.type = 'DependentListScreenData'
+  let list = sub(parent, 'SubConfigurations')
+  if (!list) {
+    list = el([])
+    setMember(parent, 'DependentListScreenData', 'SubConfigurations', list)
+  }
+  list.members.push({ name: 'ConfigurationItemData', value: child })
+  renumberSubConfigurations(order)
+  return child
 }
 
 export interface AddDependentListSupportOptions {
@@ -489,7 +547,7 @@ function supportRoundTrip(msrpPerYear: Dec, dpPerYear: Dec, state: SupportContra
  * taken over every configuration item in the order, so a tenth child anywhere
  * would widen all of them to `1.01`.
  */
-function renumberSubConfigurations(order: OrderDocument): void {
+export function renumberSubConfigurations(order: OrderDocument): void {
   let widest = 0
   for (const item of allItems(order)) {
     const children = sub(item, 'SubConfigurations')

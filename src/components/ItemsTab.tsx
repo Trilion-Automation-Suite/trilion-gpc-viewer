@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import type { OrderSummary, SmaDetails } from '../types/order.ts'
 import type { UpgradeLine } from '../lib/gpc/reentry.ts'
 import type { ArticleCatalogEntry } from '../lib/parseConfig.ts'
@@ -6,6 +6,8 @@ import type { LicenseOption } from '../lib/gpc/licenses.ts'
 import { PasteOrderModal } from './PasteOrderModal.tsx'
 import { SystemEditorModal } from './SystemEditorModal.tsx'
 import type { SystemEditor } from '../lib/gpc/dependentListEngine.ts'
+import type { BuildableItem } from '../lib/gpc/dependentList.ts'
+import { searchEntries } from '../lib/productSearch.ts'
 import type { GpcContainer } from '../lib/gpc/container.ts'
 import type { OrderBlockPlan } from '../lib/gpc/orderBlock.ts'
 import {
@@ -44,8 +46,13 @@ interface ItemsTabProps {
   /** A block that arrived by link; opens the preview as soon as it is set. */
   linkedOrder: string | null
   onLinkedOrderHandled: () => void
-  /** A working copy of one configured system, or null when it cannot be opened. */
-  openSystemEditor: (no: string) => SystemEditor | null
+  /**
+   * A working copy of one configured system, or null when it cannot be opened.
+   * With `newItem`, starts that line from the catalog first (the `no` is ignored).
+   */
+  openSystemEditor: (no: string | null, newItem?: string) => SystemEditor | null
+  /** What a new line can be started from. Built on demand. */
+  getBuildableItems: () => BuildableItem[]
   /** Writes an editor's result into the order. Throws when the change cannot be priced. */
   onApplySystem: (editor: SystemEditor) => void
 }
@@ -93,11 +100,16 @@ function defaultContractEndMonth(): string {
 
 function SearchProductModal({
   catalog,
+  systems,
   onAdd,
+  onConfigureNew,
   onCancel,
 }: {
   catalog: ArticleCatalogEntry[]
+  /** Systems and other configurable lines the catalog can start from. */
+  systems: BuildableItem[]
   onAdd: (fields: AddProductFields) => void
+  onConfigureNew: (itemName: string) => void
   onCancel: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -113,10 +125,14 @@ function SearchProductModal({
   const [licenseUserName, setLicenseUserName] = useState('Trilion Licensing')
 
 
-  const filtered = query.trim().length < 2
-    ? []
-    : catalog.filter(e => e.longName.toLowerCase().includes(query.toLowerCase()))
-      .slice(0, 50)
+  const searchable = useMemo(
+    () => catalog.map(e => ({ name: e.longName, sapNr: e.sapNr, msrp: e.unitMsrp, entry: e })),
+    [catalog]
+  )
+  const systemIndex = useMemo(() => systems.map(s => ({ ...s })), [systems])
+  const tooShort = query.trim().length < 2
+  const filtered = tooShort ? [] : searchEntries(searchable, query).map(x => x.entry)
+  const matchingSystems = tooShort ? [] : searchEntries(systemIndex, query, 6)
 
   const candidate = selected ?? (filtered.length === 1 ? filtered[0] : null)
   const needsContract = candidate?.isSoftwareSupport ?? false
@@ -171,12 +187,34 @@ function SearchProductModal({
               placeholder="Type at least 2 characters..."
             />
           </label>
+          {matchingSystems.length > 0 && !selected && (
+            <div className="modal-search-systems">
+              <span className="modal-search-group">Configure a new system</span>
+              {matchingSystems.map(s => (
+                <button
+                  type="button"
+                  key={s.name}
+                  className="modal-search-system"
+                  onClick={() => onConfigureNew(s.name)}
+                  title="Start this line with every section, then pick its options"
+                >
+                  <span className="modal-search-name">{s.name}</span>
+                  <span className="modal-search-meta"><span className="modal-search-category">{s.group}</span> Configure…</span>
+                </button>
+              ))}
+            </div>
+          )}
           {filtered.length > 0 && !selected && (
             <div className="modal-search-results">
+              {matchingSystems.length > 0 && <span className="modal-search-group">Articles</span>}
               {filtered.map(e => (
-                <div key={e.sapNr || e.longName} className="modal-search-row" onClick={() => handleSelect(e)}>
+                <div key={e.sapNr + '\u0000' + e.longName} className="modal-search-row" onClick={() => handleSelect(e)}>
                   <span className="modal-search-name">{e.longName}</span>
-                  <span className="modal-search-meta">{e.sapNr && <span className="modal-search-sap">{e.sapNr}</span>}{e.unitMsrp != null && <span className="modal-search-price">MSRP {e.unitMsrp.toLocaleString()}</span>}</span>
+                  <span className="modal-search-meta">
+                    {e.category && <span className="modal-search-category">{e.category}</span>}
+                    {e.sapNr && <span className="modal-search-sap">{e.sapNr}</span>}
+                    {e.unitMsrp != null && <span className="modal-search-price">MSRP {e.unitMsrp.toLocaleString()}</span>}
+                  </span>
                 </div>
               ))}
             </div>
@@ -369,6 +407,7 @@ export function ItemsTab({
   linkedOrder,
   onLinkedOrderHandled,
   openSystemEditor,
+  getBuildableItems,
   onApplySystem,
 }: ItemsTabProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -493,7 +532,19 @@ export function ItemsTab({
         />
       )}
       {activeModal === 'product' && (
-        <SearchProductModal catalog={getArticleCatalog()} onAdd={handleAddProduct} onCancel={() => setActiveModal(null)} />
+        <SearchProductModal
+          catalog={getArticleCatalog()}
+          systems={getBuildableItems()}
+          onAdd={handleAddProduct}
+          onConfigureNew={(name) => {
+            const editor = openSystemEditor(null, name)
+            if (editor) {
+              setActiveModal(null)
+              setSystemEditor(editor)
+            }
+          }}
+          onCancel={() => setActiveModal(null)}
+        />
       )}
       {activeModal === 'paste' && (
         <PasteOrderModal

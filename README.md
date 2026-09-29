@@ -15,6 +15,13 @@ Open a `.gconfiguration` file and instantly see the full order breakdown: line i
   click runs the configurator's own rules, so implied parts (camera frames, basic units, cases)
   follow, options whose conditions lapse disappear, and sections left without a required pick are
   flagged, exactly as GPC would show them
+- **Start a new system** — type a system name in Add Product ("aramis srx") and choose *Configure…*:
+  the line is built with every section, the rules fill in what they decide (sensor head,
+  controller, the in-system SMA, training), and you pick the rest
+- Ranked product search — every word must match, whole words beat partial ones, a full SAP number
+  jumps straight to its article, and in-system components sink below sellable products
+- *Reset cache* in the footer forgets cached product databases and the offline app, for when a
+  catalog or a build looks stale
 - Cmd+K / Ctrl+K command palette for searching tabs, fields, contacts, and line items
 - Light / dark theme
 - Installable PWA — works offline after first load
