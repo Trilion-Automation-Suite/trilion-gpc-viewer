@@ -287,6 +287,8 @@ export class Section {
   readonly selection: Selection
   readonly articles: SectionArticle[]
   readonly isSubconfig: boolean
+  /** SAPCharacterTraitNames: the catalog's own tag for what a section is (sensor type, camera frame …). */
+  readonly traits: string[]
 
   constructor(e: ElementValue) {
     this.longName = str(e, 'LongName') ?? ''
@@ -298,6 +300,7 @@ export class Section {
     this.selection = Selection.parse(sub(e, 'Selection')) ?? new Selection('ExactlyOne')
     this.articles = kids(sub(e, 'Articles')).map((a) => new SectionArticle(a))
     this.isSubconfig = bool(e, 'IsSubconfiguration')
+    this.traits = strings(e, 'SAPCharacterTraitNames').filter((t) => t !== '')
   }
 
   get type(): SectionType {
@@ -356,6 +359,12 @@ export class EngineCatalog {
     const usersData = sub(config, 'UsersData')
     const userList = usersData ? kids(usersData)[0] ?? null : null
     for (const u of kids(userList)) this.users.set(str(u, 'Username') ?? '', u)
+  }
+
+  /** The article's ZEISS SAP number, or '' when it has none or does not exist. */
+  sapOf(name: string): string {
+    const e = this.articleEls.get(name)
+    return e ? (str(e, 'SapNr') ?? '') : ''
   }
 
   article(name: string): ArticleInfo | null {
@@ -1899,6 +1908,70 @@ export class SystemEditor {
       }
     }
     return out
+  }
+
+  /**
+   * Gets an option to `amount` the way an operator would, when it may not be
+   * clickable itself. Many options are only ever set by another pick — the
+   * camera an ARAMIS Adjustable ships with follows the "Sensor Head" selector —
+   * so when the option is locked, the pick goes to an option in this list
+   * whose implications name it. Returns true when the option ends at `amount`
+   * or more; never throws for a pick the rules refuse.
+   */
+  place(sectionIndex: number, optionIndex: number, amount: number): boolean {
+    const sec = this.root.sections[sectionIndex]
+    const target = sec?.options[optionIndex]
+    if (!target) return false
+    if (target.amount >= amount) return true
+    const tryPick = (si: number, oi: number, n: number): boolean => {
+      try {
+        this.pick(si, oi, n)
+        return true
+      } catch {
+        return false
+      }
+    }
+    if (tryPick(sectionIndex, optionIndex, amount) && target.amount >= amount) return true
+
+    const list = this.root.listName
+    const sameList = (ref: string) => ref === list || ref === ''
+
+    // Set only by another pick: pick what implies it.
+    for (let si = 0; si < this.root.sectionDefs.length; si++) {
+      const def = this.root.sectionDefs[si]
+      for (let oi = 0; oi < def.articles.length; oi++) {
+        const implies = def.articles[oi].implications.some(
+          (imp) => sameList(imp.dlRef) && imp.secRef === sec.name && imp.names.includes(target.name)
+        )
+        const trigger = this.root.sections[si].options[oi]
+        if (!implies || trigger.amount > 0 || trigger.isDisabled) continue
+        if (tryPick(si, oi, Math.max(1, trigger.min)) && target.amount >= amount) return true
+      }
+    }
+
+    // Not offered yet: make the pick its precondition asks for. The rules may
+    // then include a variant rather than this exact option — the rack case
+    // comes as "Case 19Zoll Testing (in-sys)" beside an ARAMIS Controller — and
+    // a section that now carries something it did not before is the order's
+    // line, as the configurator chose to fill it.
+    if (target.isDisabled) {
+      const before = sec.options.map((o) => o.amount)
+      for (const pre of target.sa.preconditions) {
+        if (!sameList(pre.dlRef) || pre.logical === 'AndNot' || pre.logical === 'OrNot') continue
+        const si = this.root.sections.findIndex((x) => x.name === pre.secRef)
+        if (si < 0 || si === sectionIndex) continue
+        for (const name of pre.names) {
+          const oi = this.root.sections[si].options.findIndex((o) => o.name === name)
+          const opt = this.root.sections[si].options[oi]
+          if (!opt || opt.amount > 0 || opt.isDisabled) continue
+          if (tryPick(si, oi, Math.max(1, opt.min))) break
+        }
+      }
+      if (target.amount >= amount) return true
+      if (!target.isDisabled && tryPick(sectionIndex, optionIndex, amount) && target.amount >= amount) return true
+      if (sec.options.some((o, i) => o.amount > 0 && before[i] === 0)) return true
+    }
+    return target.amount >= amount
   }
 
   /** Every option whose amount differs from the file as opened. */

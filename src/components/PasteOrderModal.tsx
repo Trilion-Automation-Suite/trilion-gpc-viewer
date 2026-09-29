@@ -48,6 +48,13 @@ export function PasteOrderModal({
   const changes = useMemo(() => (plan ? fieldChanges(order, plan) : []), [order, plan])
   const unresolved = plan?.items.filter((i) => !i.resolved) ?? []
   const resolved = plan?.items.filter((i) => i.resolved) ?? []
+  // Lines a complete system takes are shown under it, not as articles of their own.
+  const inSystem = new Set((plan?.systems ?? []).flatMap((m) => m.members))
+  const loose = resolved.filter((i) => !inSystem.has(i.index))
+  const lineName = (index: number) => {
+    const entry = plan?.items.find((i) => i.index === index)
+    return entry?.resolved?.kind === 'article' ? entry.resolved.articleName : `item ${index + 1}`
+  }
 
   return (
     <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCancel() }}>
@@ -106,11 +113,26 @@ export function PasteOrderModal({
               </section>
             )}
 
-            {resolved.length > 0 && (
-              <section className="paste-order-section">
-                <h4 className="paste-order-heading">{resolved.length} item{resolved.length === 1 ? '' : 's'} to add</h4>
+            {(plan?.systems ?? []).map((m) => (
+              <section key={m.itemName} className="paste-order-section">
+                <h4 className="paste-order-heading">
+                  {m.itemName} — configured from {m.members.length} line{m.members.length === 1 ? '' : 's'}
+                </h4>
+                <p className="paste-order-hint">
+                  Recognised by {lineName(m.camera)}{m.base !== null ? ` on ${lineName(m.base)}` : ''}. Each line is
+                  picked through GPC's rules; what they add, and anything they will not take, is listed after applying.
+                </p>
                 <ul className="paste-order-list">
-                  {resolved.map(entry => (
+                  {m.members.map((i) => <li key={i}><span className="paste-order-item">{lineName(i)}</span></li>)}
+                </ul>
+              </section>
+            ))}
+
+            {loose.length > 0 && (
+              <section className="paste-order-section">
+                <h4 className="paste-order-heading">{loose.length} item{loose.length === 1 ? '' : 's'} to add</h4>
+                <ul className="paste-order-list">
+                  {loose.map(entry => (
                     <li key={entry.index}><span className="paste-order-item">{describeItem(entry)}</span></li>
                   ))}
                 </ul>

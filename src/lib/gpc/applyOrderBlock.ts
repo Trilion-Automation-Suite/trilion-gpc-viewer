@@ -13,7 +13,10 @@ import type { GpcContainer } from './container.ts'
 import type { OrderDocument } from './orderXml.ts'
 import type { OrderSummary } from '../../types/order.js'
 import { addCatalogArticle, recalculateOrder } from './addItem.ts'
-import { setMember } from './orderXml.ts'
+import { parseOrderXml, serializeOrderXml, setMember } from './orderXml.ts'
+import { EngineCatalog } from './dependentListEngine.ts'
+import { assembleSystem } from './systemAssembly.ts'
+import type { ArticleLine } from './systemAssembly.ts'
 import { currencyRow, readPdbConfig } from './blankOrder.ts'
 import { addLicense } from './licenses.ts'
 import { addSmaExtension } from './sma.ts'
@@ -23,6 +26,11 @@ import type { OrderBlockPlan } from './orderBlock.ts'
 export interface ApplyReport {
   added: string[]
   failed: Array<{ what: string; problem: string }>
+  /**
+   * What the operator should know that is not a failure: a line kept beside a
+   * system because its rules would not take it, sections left to pick.
+   */
+  notes: string[]
 }
 
 /**
@@ -37,7 +45,7 @@ export function applyOrderBlockItems(
   pdb: GpcContainer,
   plan: OrderBlockPlan
 ): ApplyReport {
-  const report: ApplyReport = { added: [], failed: [] }
+  const report: ApplyReport = { added: [], failed: [], notes: [] }
 
   // The block's price list governs, and it has to be on the document before
   // anything is priced: every article's Msrp and Dp are read from the row with
@@ -61,8 +69,68 @@ export function applyOrderBlockItems(
     }
   }
 
+  // Complete systems first: each is built as one configured line, and the
+  // article lines it took are not added again below. Each is tried on a copy,
+  // so a system the rules cannot finish leaves its lines to fall back to
+  // plain articles rather than half a system on the order.
+  const consumed = new Set<number>()
+  /** Everything the configured systems hold, and which system holds it. */
+  const inSystem = new Map<string, string>()
+  if (plan.systems.length > 0) {
+    const catalog = new EngineCatalog(readPdbConfig(pdb))
+    const lines: ArticleLine[] = []
+    for (const entry of plan.items) {
+      if (entry.resolved?.kind !== 'article') continue
+      const item = entry.item as { sapNr?: string; name?: string }
+      lines.push({
+        index: entry.index,
+        articleName: entry.resolved.articleName,
+        amount: entry.resolved.amount,
+        ...(item.sapNr ? { sapNr: item.sapNr } : {}),
+        ...(item.name ? { name: item.name } : {}),
+      })
+    }
+    for (const match of plan.systems) {
+      const trial = parseOrderXml(serializeOrderXml(order))
+      try {
+        const result = assembleSystem(trial, pdb, catalog, match, lines)
+        order.root.members = trial.root.members
+        for (const i of result.placed) consumed.add(i)
+        for (const name of result.contains) if (!inSystem.has(name)) inSystem.set(name, `${result.no} ${result.itemName}`)
+        report.added.push(
+          `${result.no} ${result.itemName}, configured from ${result.placed.length} line${result.placed.length === 1 ? '' : 's'}` +
+          (result.addedByRules.length ? `; GPC's rules added ${result.addedByRules.join(', ')}` : '')
+        )
+        for (const r of result.refused) {
+          report.notes.push(`${describe(r.index)} added as its own line: ${r.reason}`)
+        }
+        if (result.incomplete.length > 0) {
+          report.notes.push(`${result.no} ${result.itemName} still needs a pick in Configure: ${result.incomplete.join(', ')}`)
+        }
+      } catch (err) {
+        report.notes.push(
+          `${match.itemName} could not be configured (${err instanceof Error ? err.message : String(err)}); its lines were added one by one`
+        )
+      }
+    }
+  }
+
   for (const entry of plan.items) {
+    if (consumed.has(entry.index)) continue
     const resolved = entry.resolved
+    // A licence the camera implies, the eLearning a system's Training carries:
+    // already on the order inside the system, so adding it again would sell it
+    // twice. Checked before "unresolved", because a licence that exists only
+    // inside a system has nowhere else to resolve.
+    const raw = entry.item as { name?: string }
+    const named = resolved?.kind === 'article'
+      ? resolved.articleName
+      : resolved?.kind === 'license' ? resolved.option.articleName : raw?.name ?? null
+    const heldBy = named ? inSystem.get(named) : undefined
+    if (named && heldBy) {
+      report.added.push(`${named}: already in ${heldBy}`)
+      continue
+    }
     if (!resolved) {
       report.failed.push({ what: describe(entry.index), problem: entry.problem ?? 'unresolved' })
       continue

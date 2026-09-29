@@ -184,6 +184,26 @@ pricing counts whole months regardless. Sending `2026-07-14` as
 A `startNewContract` later than the month after `endOldContract` leaves a
 deliberate gap. The lapsed months are not charged.
 
+### Complete systems — no item type of their own
+
+A system is sent as the article lines a sales order already has — sensor head,
+base, controller, cable, measuring volume, stand, computer — and the viewer
+assembles it. Lines that name a **camera** together with a **base** are
+recognised as the system whose option tree holds both (a 24M head on an
+adjustable frame is an ARAMIS Adjustable; an SRX head on a fixed frame is an
+ARAMIS SRX), using the catalog's own section tags (`A300_GOM_SENSORTYPE`,
+`A300_GOM_CAMERAFRAME`). The system is started from the catalog and every line
+that is one of its options is picked through GPC's rules: the camera through
+its selector, a rack case through the computer case it depends on. What the
+rules add — licences, the in-system SMA, Training — is theirs to add, and a
+line elsewhere in the block that names something the system already holds is
+not added twice. Lines that are not options of the system stay lines of their
+own.
+
+For a generator this means: **send the camera and the base.** A system whose
+head has no ZEISS vendor line arrives as loose parts, because nothing in the
+block says which system they belong to.
+
 ## Opening the viewer on a link
 
 A block can travel in a URL instead of being copied, which is what a button in

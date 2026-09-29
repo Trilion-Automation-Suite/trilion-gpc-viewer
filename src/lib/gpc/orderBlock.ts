@@ -20,6 +20,9 @@ import { licenseOptions } from './licenses.ts'
 import type { LicenseOption } from './licenses.ts'
 import { MINIMUM_CONTRACT_MONTHS } from './contractTerm.ts'
 import { ENUM_VALUES } from './memberOrder.ts'
+import { EngineCatalog } from './dependentListEngine.ts'
+import { findSystems } from './systemAssembly.ts'
+import type { ArticleLine, SystemMatch } from './systemAssembly.ts'
 
 /**
  * `AddressType` is a C# enum and travels as its member name, so this is not a
@@ -208,6 +211,11 @@ export interface ResolvedItem {
 export interface OrderBlockPlan {
   block: OrderBlock
   items: ResolvedItem[]
+  /**
+   * Complete systems the article lines describe — a camera with its base — to
+   * be built as one configured line each instead of loose articles.
+   */
+  systems: SystemMatch[]
   /** Fields that will change, as `label` / `from` / `to`, for the preview. */
   warnings: string[]
   get ok(): boolean
@@ -380,9 +388,30 @@ export function planOrderBlock(
     }
   })
 
+  // Article lines that together name a camera and its base become a system.
+  const lines: ArticleLine[] = []
+  for (const entry of items) {
+    if (entry.resolved?.kind !== 'article') continue
+    const item = entry.item as ArticleItem
+    lines.push({
+      index: entry.index,
+      articleName: entry.resolved.articleName,
+      amount: entry.resolved.amount,
+      ...(item.sapNr ? { sapNr: item.sapNr } : {}),
+      ...(item.name ? { name: item.name } : {}),
+    })
+  }
+  let systems: SystemMatch[] = []
+  try {
+    systems = lines.length > 0 ? findSystems(new EngineCatalog(config), config, lines) : []
+  } catch (err) {
+    warnings.push(`Could not look for complete systems: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   return {
     block,
     items,
+    systems,
     warnings,
     get ok() {
       return items.every((i) => i.resolved !== undefined)

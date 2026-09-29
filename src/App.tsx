@@ -507,12 +507,18 @@ export function App() {
       setOrder(withFields)
       setIsDirty(true)
 
-      if (report.failed.length > 0) {
-        setAddItemError(
-          `Pasted, without ${report.failed.length} item${report.failed.length === 1 ? '' : 's'}: ` +
-          report.failed.map(f => `${f.what} — ${f.problem}`).join('; ')
-        )
-      }
+      // A system built from the block is news worth reading even when nothing
+      // failed: what GPC's rules added, and which sections still need a pick.
+      const systems = report.added.filter(a => / configured from /.test(a))
+      const parts = [
+        ...systems,
+        ...report.notes,
+        ...(report.failed.length > 0
+          ? [`without ${report.failed.length} item${report.failed.length === 1 ? '' : 's'}: ` +
+             report.failed.map(f => `${f.what} — ${f.problem}`).join('; ')]
+          : []),
+      ]
+      if (parts.length > 0) setAddItemError(`Pasted. ${parts.join('. ')}.`)
     } catch (err) {
       setAddItemError(err instanceof Error ? err.message : String(err))
     }
