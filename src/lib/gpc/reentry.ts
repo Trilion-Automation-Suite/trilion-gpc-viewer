@@ -19,7 +19,7 @@
  * configuration GPC produced.
  */
 import type { GpcContainer } from './container.ts'
-import type { SmaDependentList, SmaDetails } from '../../types/order.js'
+import type { ConfigItem, SmaDependentList, SmaDetails } from '../../types/order.js'
 import { readPdbConfig } from './blankOrder.ts'
 import { findArticle, priceArticle } from './addItem.ts'
 import { scanDiscounts, scanRoundingRules } from './roundingRules.ts'
@@ -196,4 +196,23 @@ export function upgradeLines(sma: SmaDetails, catalog: GpcContainer | UpgradeCat
     }
   }
   return out
+}
+
+/**
+ * An item's list and distributor totals with its upgrades added — what GPC
+ * shows once it has recomputed the lapse. The stored `TotalMsrp`/`TotalDp`
+ * leave the upgrade out, so every total on screen goes through here; a save
+ * still writes the stored ones untouched.
+ */
+export function itemTotals(item: ConfigItem, getUpgrades: (sma: SmaDetails) => UpgradeLine[]):
+  { msrp: number | null; dp: number | null } {
+  const upgrades = item.sma ? getUpgrades(item.sma) : []
+  if (upgrades.length === 0) return { msrp: item.totalMsrp, dp: item.totalDp }
+  let msrp = item.totalMsrp ?? 0
+  let dp = item.totalDp ?? 0
+  for (const u of upgrades) {
+    msrp += u.msrp
+    dp += u.dp
+  }
+  return { msrp, dp }
 }

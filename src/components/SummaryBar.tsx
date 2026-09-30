@@ -1,18 +1,19 @@
-import type { OrderSummary } from '../types/order.ts'
+import type { OrderSummary, SmaDetails } from '../types/order.ts'
+import { itemTotals } from '../lib/gpc/reentry.ts'
+import type { UpgradeLine } from '../lib/gpc/reentry.ts'
 import { formatPrice, formatPercent, calcEndCustomerPrice, priceDecimals } from '../lib/pricing.ts'
 import './SummaryBar.css'
 
 interface SummaryBarProps {
   order: OrderSummary
+  /** The lapsed-cover upgrades, which the stored totals leave out. */
+  getUpgrades: (sma: SmaDetails) => UpgradeLine[]
 }
 
-export function SummaryBar({ order }: SummaryBarProps) {
-  const listPrice = order.items.reduce<number>(
-    (acc, item) => acc + (item.totalMsrp ?? 0), 0
-  )
-  const distributorPrice = order.items.reduce<number>(
-    (acc, item) => acc + (item.totalDp ?? 0), 0
-  )
+export function SummaryBar({ order, getUpgrades }: SummaryBarProps) {
+  const totals = order.items.map((item) => itemTotals(item, getUpgrades))
+  const listPrice = totals.reduce<number>((acc, t) => acc + (t.msrp ?? 0), 0)
+  const distributorPrice = totals.reduce<number>((acc, t) => acc + (t.dp ?? 0), 0)
 
   const discount = order.discountForCustomer ?? 0
   const endCustomerPrice = calcEndCustomerPrice(listPrice, discount)

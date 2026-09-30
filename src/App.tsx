@@ -1019,7 +1019,7 @@ export function App() {
 
         {state.status === 'loaded' && order && (
           <div className="app-loaded">
-            <SummaryBar order={order} />
+            <SummaryBar order={order} getUpgrades={getUpgrades} />
             <OrderStrip
               order={order}
               isEditing={isEditing}

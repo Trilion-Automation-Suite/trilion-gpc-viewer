@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { missingMonths, upgradeLines } from '../reentry.ts'
+import { itemTotals, missingMonths, upgradeLines } from '../reentry.ts'
+import type { UpgradeLine } from '../reentry.ts'
 import { catalogContainer } from '../catalogContainer.ts'
-import type { SmaDetails } from '../../../types/order.ts'
+import type { ConfigItem, SmaDetails } from '../../../types/order.ts'
 
 /**
  * DP is derived from `DiscountsData`, not from a price list's Dp column: no row
@@ -135,5 +136,27 @@ describe('the upgrade charged for it', () => {
     const unknown = sma()
     unknown.softwareArticles[0].name = 'EXT SMA for Something Else'
     expect(upgradeLines(unknown, pdb(), inputs)).toEqual([])
+  })
+})
+
+describe('an item\'s totals on screen', () => {
+  const item = (over: Partial<ConfigItem> = {}): ConfigItem =>
+    ({ totalMsrp: 10522, totalDp: 6312, sma: sma(), ...over }) as ConfigItem
+  const line = (msrp: number, dp: number): UpgradeLine => ({
+    dongleId: '3-123567', smaArticleName: '', licenseArticleName: '', sapUpgradeNr: '',
+    msrp, dp, missingMonths: 40,
+  })
+
+  it('adds the upgrades the stored totals leave out', () => {
+    // Two agreements on one dongle whose cover lapsed forty months ago.
+    const t = itemTotals(item(), () => [line(4936, 2960.5), line(9100, 5459.5)])
+    expect(t.msrp).toBe(24558)
+    expect(t.dp).toBe(14732)
+  })
+
+  it('leaves the stored totals alone when nothing lapsed', () => {
+    expect(itemTotals(item(), () => [])).toEqual({ msrp: 10522, dp: 6312 })
+    expect(itemTotals(item({ sma: undefined, totalMsrp: null }), () => [line(1, 1)]))
+      .toEqual({ msrp: null, dp: 6312 })
   })
 })

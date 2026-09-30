@@ -3,6 +3,7 @@ import type { OrderSummary, ConfigItem, SectionDetail, SmaDetails, SmaDependentL
 import { formatPrice, formatPercent, priceDecimals } from '../lib/pricing.ts'
 import { MINIMUM_CONTRACT_MONTHS, monthOf } from '../lib/gpc/contractTerm.ts'
 import { questionIssues } from '../lib/gpc/questions.ts'
+import { itemTotals } from '../lib/gpc/reentry.ts'
 import type { UpgradeLine } from '../lib/gpc/reentry.ts'
 import type { SmaContractEdit } from '../lib/gpc/sma.ts'
 import './ConfigItemsTable.css'
@@ -609,7 +610,8 @@ function ItemRow({
   getUpgrades: (sma: SmaDetails) => UpgradeLine[]
   onConfigure?: (no: string) => void
 }) {
-  const margin = calcMargin(item.totalMsrp, item.totalDp)
+  const totals = itemTotals(item, getUpgrades)
+  const margin = calcMargin(totals.msrp, totals.dp)
   // A top-level system: its options are a dependent list the rules engine can re-derive.
   // A sub-configuration follows its parent and is edited through it.
   const configurable = isEditing && onConfigure !== undefined && item.itemType === 'dependent' &&
@@ -690,8 +692,8 @@ function ItemRow({
         <td className="item-system-type" title={item.systemType}>
           {item.systemType || '—'}
         </td>
-        <td className="right"><PriceCell value={item.totalMsrp} dec={dec} /></td>
-        <td className="right"><PriceCell value={item.totalDp} dec={dec} /></td>
+        <td className="right"><PriceCell value={totals.msrp} dec={dec} /></td>
+        <td className="right"><PriceCell value={totals.dp} dec={dec} /></td>
         <td className="right"><MarginCell value={margin} /></td>
         <td className="item-delete-cell">
           {isEditing && (
@@ -751,10 +753,10 @@ export function ConfigItemsTable({
 }: ConfigItemsTableProps) {
   const visibleItems = order.items.filter((i) => !i.isHidden)
   const totals = visibleItems.reduce(
-    (acc, item) => ({
-      msrp: acc.msrp + (item.totalMsrp ?? 0),
-      dp: acc.dp + (item.totalDp ?? 0),
-    }),
+    (acc, item) => {
+      const t = itemTotals(item, getUpgrades)
+      return { msrp: acc.msrp + (t.msrp ?? 0), dp: acc.dp + (t.dp ?? 0) }
+    },
     { msrp: 0, dp: 0 }
   )
   const totalMargin = calcMargin(totals.msrp, totals.dp)

@@ -158,6 +158,9 @@ adding a `get*()` call to JSX, check it is a cache hit.
 Some things GPC recomputes on open and never stores — the lapsed-cover upgrade
 is the example (`src/lib/gpc/reentry.ts`). Compute them for display; **write
 nothing**. A save must leave the stored totals exactly as GPC left them.
+Every total *on screen* still includes them — item row, table total, summary
+cards — through `itemTotals`; reading `item.totalMsrp` directly shows GPC's
+figure before the upgrade.
 
 ## Before believing a UI report
 
