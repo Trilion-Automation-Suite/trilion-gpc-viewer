@@ -119,6 +119,15 @@ export function reEntryTerms(config: ElementValue): { factor: number; goodwill: 
 }
 
 /**
+ * How many months back a new term may start (`ContractStartDatePastValueInMonth`,
+ * 6 in PDB290), or null when the catalog does not say.
+ */
+export function contractStartPastMonths(config: ElementValue): number | null {
+  const n = parameter(config, 'ContractStartDatePastValueInMonth', NaN)
+  return Number.isFinite(n) ? n : null
+}
+
+/**
  * Months of cover missed, GPC's way.
  *
  * `isOlderSelected` means the operator chose "older" rather than a date, and

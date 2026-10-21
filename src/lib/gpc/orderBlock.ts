@@ -18,8 +18,8 @@ import { readPdbConfig } from './blankOrder.ts'
 import { findArticle } from './addItem.ts'
 import { licenseOptions } from './licenses.ts'
 import type { LicenseOption } from './licenses.ts'
-import { MINIMUM_CONTRACT_MONTHS, endOfMonth, renewalStart, startOfMonth } from './contractTerm.ts'
-import { missingMonths, reEntryTerms, upgradesBySap } from './reentry.ts'
+import { MINIMUM_CONTRACT_MONTHS, earliestStart, endOfMonth, renewalStart, startOfMonth, termEnd } from './contractTerm.ts'
+import { contractStartPastMonths, missingMonths, reEntryTerms, upgradesBySap } from './reentry.ts'
 import type { UpgradeOf } from './reentry.ts'
 import { ENUM_VALUES } from './memberOrder.ts'
 import { listOptions } from './catalogIndex.ts'
@@ -226,6 +226,12 @@ export interface ResolvedItem {
       }
   /** Why it could not be matched. Shown to the operator; never silently dropped. */
   problem?: string
+  /**
+   * Parts of a resolved item that could not be matched — an agreement on a
+   * dongle whose other agreements did. The rest is applied; these are named
+   * in the preview and after applying, to be added by hand.
+   */
+  unmatched?: string[]
 }
 
 export interface OrderBlockPlan {
@@ -324,6 +330,7 @@ export function planOrderBlock(
     for (const name of bySap.get(sap) ?? []) upgradeByName.set(name, of)
   }
   const terms = reEntryTerms(config)
+  const pastStart = contractStartPastMonths(config)
   const warnings: string[] = []
 
   if (block.catalog && openCatalog && block.catalog !== openCatalog) {
@@ -413,6 +420,10 @@ export function planOrderBlock(
         const offered = new Set(smaOptionNames(config))
         const names: string[] = []
         const upgrades: Array<{ label: string; of: UpgradeOf }> = []
+        // An agreement that does not match costs only itself: the dongle and
+        // the agreements that did match still land, and this one is named so
+        // it can be added by hand — rather than the whole renewal vanishing.
+        const unmatched: string[] = []
         for (let i = 0; i < given.length; i++) {
           const name = given[i]
           const sap = Array.isArray(item.sapNrs) ? item.sapNrs[i] : undefined
@@ -435,14 +446,15 @@ export function planOrderBlock(
           } else if (upgrade) {
             upgrades.push({ label: name || sap || '(upgrade)', of: upgrade })
           } else {
-            return {
-              index,
-              item,
-              problem: sap
+            unmatched.push(
+              sap
                 ? `Neither SAP ${sap} nor "${name}" is a maintenance agreement in this catalog's SMA list.`
-                : `"${name}" is not a maintenance agreement in this catalog's SMA list, and the block gives no SAP number to find it by.`,
-            }
+                : `"${name}" is not a maintenance agreement in this catalog's SMA list, and the block gives no SAP number to find it by.`
+            )
           }
+        }
+        if (names.length === 0 && unmatched.length > 0) {
+          return { index, item, problem: unmatched.join(' ') }
         }
         if (names.length === 0) {
           const belongs = [...new Set(upgrades.map((u) => `"${u.of.smaArticleName}"`))].join(', ')
@@ -459,6 +471,19 @@ export function planOrderBlock(
         // charge: the operator compares the two, because the order the block
         // came from was priced on the assumption that they agree.
         const start = item.startNewContract ? startOfMonth(item.startNewContract) : renewalStart(item.endOldContract)
+        // A renewal may be back-dated to carry on from the old agreement with
+        // no gap — and so no upgrade — but GPC only goes so far back.
+        if (item.startNewContract && pastStart !== null && start < earliestStart(pastStart)) {
+          warnings.push(
+            `Dongle ${item.dongleId}: the term starts ${start.slice(0, 7)}, and GPC takes a start at most ${pastStart} months back. ` +
+            'Re-create the quote, or set the start in GPC.'
+          )
+        }
+        if (item.startNewContract && start <= endOfMonth(item.endOldContract)) {
+          warnings.push(
+            `Dongle ${item.dongleId}: the term starts ${start.slice(0, 7)}, before the old agreement ended (${item.endOldContract.slice(0, 7)}).`
+          )
+        }
         const lapse = missingMonths(
           { endOldContract: endOfMonth(item.endOldContract), startNewContract: start, isOlderSelected: false },
           terms.max
@@ -484,6 +509,7 @@ export function planOrderBlock(
           index,
           item,
           resolved: { kind: 'sma', item, articleNames: names, upgrades: upgrades.map((u) => u.of.licenseArticleName) },
+          ...(unmatched.length > 0 ? { unmatched } : {}),
         }
       }
       default:
@@ -521,7 +547,7 @@ export function planOrderBlock(
     systems,
     warnings,
     get ok() {
-      return items.every((i) => i.resolved !== undefined)
+      return items.every((i) => i.resolved !== undefined && !i.unmatched?.length)
     },
   }
 }
@@ -545,7 +571,13 @@ export function describeItem(entry: ResolvedItem): string {
     return `Licence: ${resolved.option.articleName} (${resolved.option.itemName})`
   }
   if (resolved?.kind === 'sma') {
-    const term = resolved.item.months ? `, ${resolved.item.months} months` : ''
+    // The term as it will be written, so a back-dated renewal can be checked
+    // against the quote before it lands.
+    const start = resolved.item.startNewContract
+      ? startOfMonth(resolved.item.startNewContract)
+      : renewalStart(resolved.item.endOldContract)
+    const months = resolved.item.months ?? MINIMUM_CONTRACT_MONTHS
+    const term = `, ${start.slice(0, 7)} → ${termEnd(start, months).slice(0, 7)} (${months} months)`
     const upgrade = resolved.upgrades?.length ? ' (upgrade for lapsed cover: GPC adds it)' : ''
     return `SMA on ${resolved.item.dongleId}${term}: ${resolved.articleNames.join(', ')}${upgrade}`
   }

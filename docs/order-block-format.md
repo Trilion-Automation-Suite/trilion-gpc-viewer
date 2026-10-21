@@ -196,6 +196,24 @@ pricing counts whole months regardless. Sending `2026-07-14` as
 A `startNewContract` later than the month after `endOldContract` leaves a
 deliberate gap. The lapsed months are not charged.
 
+**A renewal can be back-dated.** GPC takes a start up to the catalog's
+`ContractStartDatePastValueInMonth` months back (6 in PDB290). A renewal that
+carries on from the old agreement — `startNewContract` the month after
+`endOldContract` — leaves no gap, so GPC charges no upgrade for lapsed cover.
+To still run twelve months forward, its `months` is the back-dated months plus
+twelve: cover that ended in April 2026, renewed in October 2026, is
+`"startNewContract": "2026-05", "months": 18`, to October 2027. The preview
+shows every term as start → end, and warns when a start is further back than
+the catalog takes or overlaps the old agreement. The default with no
+`startNewContract` is unchanged, so a block that does not send one is read as
+before.
+
+**An agreement that does not match costs only itself.** When some of a
+dongle's `articles` resolve and others do not, the dongle is applied with the
+ones that did. The rest are listed in the preview as *only partly matched* and
+again after applying ("Pasted. without …"), to be added by hand. A dongle on
+which nothing matches is refused as a whole, as before.
+
 **The upgrade for lapsed cover is not an agreement, so it is not sent.** When
 cover has lapsed, GPC charges an *Upgrade* (`Upgr. for …`, SAP `666011-` /
 `666012-` / `666014-`) that brings the licence up to the current year. It works

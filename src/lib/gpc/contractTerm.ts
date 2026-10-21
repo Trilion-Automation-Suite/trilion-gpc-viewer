@@ -99,3 +99,16 @@ export function renewalStart(endOldContract: string, today: Date = new Date()): 
   const nextMonth = nextMonthStart(local)
   return afterOld > nextMonth ? afterOld : nextMonth
 }
+
+/**
+ * The earliest first-of-month a new term may start, `pastMonths` back from
+ * this month — GPC's `ContractStartDatePastValueInMonth` (6 in PDB290).
+ *
+ * Counted in whole months, the lenient reading. GPC's own comparison is not
+ * ported: if it counts to the day, the earliest month this allows is refused
+ * once today is past the 1st. A generator that stays a month inside the limit
+ * never meets the difference.
+ */
+export function earliestStart(pastMonths: number, today: Date = new Date()): string {
+  return new Date(Date.UTC(today.getFullYear(), today.getMonth() - pastMonths, 1)).toISOString().slice(0, 10)
+}

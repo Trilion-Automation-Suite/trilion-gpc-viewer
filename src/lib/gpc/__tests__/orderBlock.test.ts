@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseOrderXml, serializeOrderXml } from '../orderXml.ts'
 import { catalogContainer } from '../catalogContainer.ts'
 import { parseOrder } from '../../parseOrder.js'
@@ -524,7 +524,7 @@ describe('the upgrade for lapsed cover', () => {
   const LAPSE_CONFIG = CONFIG
     .replace(
       '<VersionName>PDB290_09-2026</VersionName>',
-      '<VersionName>PDB290_09-2026</VersionName><ReEntryFactor>0.4</ReEntryFactor><GoodwillMonths>0</GoodwillMonths><MaxFurtherPurchasePriceInMonth>36</MaxFurtherPurchasePriceInMonth>'
+      '<VersionName>PDB290_09-2026</VersionName><ReEntryFactor>0.4</ReEntryFactor><ContractStartDatePastValueInMonth>6</ContractStartDatePastValueInMonth><GoodwillMonths>0</GoodwillMonths><MaxFurtherPurchasePriceInMonth>36</MaxFurtherPurchasePriceInMonth>'
     )
     .replace('</Articles>', `${ARTICLE('Upgr. for Sensor Driver ARAMIS', 'SAP-UPG')}\n    </Articles>`)
     .replace(
@@ -624,5 +624,101 @@ describe('the upgrade for lapsed cover', () => {
     expect(xml).toContain('EXT SMA for Sensor Driver ARAMIS')
     expect(xml).not.toContain('Upgr. for Sensor Driver ARAMIS')
     expect(describeViolations(validateOrderXml(xml))).toBe('')
+  })
+})
+
+describe('a dongle with an agreement the catalog does not offer', () => {
+  const block = {
+    ...BLOCK,
+    items: [{
+      type: 'sma' as const,
+      dongleId: '3-7654321',
+      endOldContract: '2026-07',
+      startNewContract: '2026-08',
+      months: 12,
+      articles: ['EXT SMA for Sensor Driver ARAMIS', 'EXT SMA for Something Withdrawn'],
+      sapNrs: ['SAP-SMA', 'SAP-GONE'],
+    }],
+  }
+
+  it('keeps the dongle and the agreements that match, and names the one that does not', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock(block, pdb)
+    expect(plan.items[0].resolved).toMatchObject({ kind: 'sma', articleNames: ['EXT SMA for Sensor Driver ARAMIS'] })
+    expect(plan.items[0].unmatched).toEqual([
+      'Neither SAP SAP-GONE nor "EXT SMA for Something Withdrawn" is a maintenance agreement in this catalog\'s SMA list.',
+    ])
+    // Not everything will land, so the plan is not clean.
+    expect(plan.ok).toBe(false)
+  })
+
+  it('applies the dongle and says, after applying, what to add by hand', () => {
+    const { doc, pdb } = build()
+    const report = applyOrderBlockItems(doc, pdb, planOrderBlock(block, pdb))
+    const [dongle] = smaDongles(doc)
+    expect(dongle.dongleId).toBe('3-7654321')
+    expect(new TextDecoder().decode(serializeOrderXml(doc))).toContain('EXT SMA for Sensor Driver ARAMIS')
+    expect(report.failed).toEqual([{
+      what: 'item 1 (dongle 3-7654321)',
+      problem: 'Neither SAP SAP-GONE nor "EXT SMA for Something Withdrawn" is a maintenance agreement in this catalog\'s SMA list. Added without it — add it by hand.',
+    }])
+  })
+
+  it('still refuses a dongle on which nothing matches', () => {
+    const { pdb } = build()
+    const plan = planOrderBlock(
+      { ...block, items: [{ ...block.items[0], articles: ['EXT SMA for Something Withdrawn'], sapNrs: ['SAP-GONE'] }] },
+      pdb
+    )
+    expect(plan.items[0].resolved).toBeUndefined()
+    expect(plan.items[0].problem).toMatch(/Neither SAP SAP-GONE/)
+  })
+})
+
+describe('a renewal back-dated to the old agreement', () => {
+  // A short lapse is renewed from the month after the old agreement ended, so
+  // there is no gap and no upgrade; the term runs on to twelve months from now.
+  afterEach(() => { vi.useRealTimers() })
+  const LAPSE_CONFIG = CONFIG.replace(
+    '<VersionName>PDB290_09-2026</VersionName>',
+    '<VersionName>PDB290_09-2026</VersionName><ReEntryFactor>0.4</ReEntryFactor><ContractStartDatePastValueInMonth>6</ContractStartDatePastValueInMonth><GoodwillMonths>0</GoodwillMonths>'
+  )
+  const renewal = (startNewContract: string, months = 18) => ({
+    ...BLOCK,
+    items: [{
+      type: 'sma' as const, dongleId: '3-1111111', endOldContract: '2026-04', startNewContract, months,
+      articles: ['EXT SMA for Sensor Driver ARAMIS'],
+    }],
+  })
+
+  it('shows the term it will write, start to end', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T12:00:00'))
+    const plan = planOrderBlock(renewal('2026-05'), catalogContainer(LAPSE_CONFIG))
+    expect(describeItem(plan.items[0])).toBe('SMA on 3-1111111, 2026-05 → 2027-10 (18 months): EXT SMA for Sensor Driver ARAMIS')
+    expect(plan.warnings.filter((w) => w.startsWith('Dongle'))).toEqual([])
+  })
+
+  it('writes it with no gap, so GPC charges no upgrade', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T12:00:00'))
+    const doc = parseOrderXml(new TextEncoder().encode(ORDER))
+    const pdb = catalogContainer(LAPSE_CONFIG)
+    const report = applyOrderBlockItems(doc, pdb, planOrderBlock(renewal('2026-05'), pdb))
+    expect(report.failed).toEqual([])
+    const [dongle] = smaDongles(doc)
+    expect(dongle.startNewContract).toBe('2026-05-01T00:00:00')
+    expect(dongle.endNewContract).toBe('2027-10-31T00:00:00')
+    expect(dongle.gapMonths).toBe(0)
+  })
+
+  it('warns when the start is further back than GPC takes', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T12:00:00'))
+    const plan = planOrderBlock(renewal('2026-03'), catalogContainer(LAPSE_CONFIG))
+    expect(plan.warnings.join('\n')).toContain('the term starts 2026-03, and GPC takes a start at most 6 months back')
+  })
+
+  it('warns when the start overlaps the old agreement', () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T12:00:00'))
+    const plan = planOrderBlock(renewal('2026-04'), catalogContainer(LAPSE_CONFIG))
+    expect(plan.warnings.join('\n')).toContain('before the old agreement ended (2026-04)')
   })
 })

@@ -48,6 +48,8 @@ export function PasteOrderModal({
   const changes = useMemo(() => (plan ? fieldChanges(order, plan) : []), [order, plan])
   const unresolved = plan?.items.filter((i) => !i.resolved) ?? []
   const resolved = plan?.items.filter((i) => i.resolved) ?? []
+  // Applied, but without the parts named here — a dongle missing one agreement.
+  const partial = resolved.filter((i) => i.unmatched?.length)
   // Lines a complete system takes are shown under it, not as articles of their own.
   const inSystem = new Set((plan?.systems ?? []).flatMap((m) => m.members))
   const loose = resolved.filter((i) => !inSystem.has(i.index))
@@ -120,6 +122,27 @@ export function PasteOrderModal({
                 </ul>
                 <p className="paste-order-hint">
                   These are left out. Everything else can still be applied.
+                </p>
+              </section>
+            )}
+
+            {partial.length > 0 && (
+              <section className="paste-order-section">
+                <h4 className="paste-order-heading paste-order-heading--bad">
+                  {partial.length} item{partial.length === 1 ? '' : 's'} only partly matched
+                </h4>
+                <ul className="paste-order-list">
+                  {partial.map(entry => (
+                    <li key={entry.index}>
+                      <span className="paste-order-item">{describeItem(entry)}</span>
+                      {(entry.unmatched ?? []).map((problem, i) => (
+                        <span key={i} className="paste-order-problem">{problem}</span>
+                      ))}
+                    </li>
+                  ))}
+                </ul>
+                <p className="paste-order-hint">
+                  Applied without these. Add them by hand.
                 </p>
               </section>
             )}
