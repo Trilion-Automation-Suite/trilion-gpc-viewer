@@ -516,3 +516,113 @@ describe('the question a line asks', () => {
     expect(describeItem(plan.items[0])).toContain('(3-1234567)')
   })
 })
+
+describe('the upgrade for lapsed cover', () => {
+  // As PDB290 has it: the upgrade lives in SmaUpgradesData and is charged by
+  // GPC from the dates. Some upgrades are articles too ("Upgr. for ..."), most
+  // are not, and none is an option of the SMA list.
+  const LAPSE_CONFIG = CONFIG
+    .replace(
+      '<VersionName>PDB290_09-2026</VersionName>',
+      '<VersionName>PDB290_09-2026</VersionName><ReEntryFactor>0.4</ReEntryFactor><GoodwillMonths>0</GoodwillMonths><MaxFurtherPurchasePriceInMonth>36</MaxFurtherPurchasePriceInMonth>'
+    )
+    .replace('</Articles>', `${ARTICLE('Upgr. for Sensor Driver ARAMIS', 'SAP-UPG')}\n    </Articles>`)
+    .replace(
+      '<ConfigurationItemsData>',
+      `<SmaUpgradesData>
+    <SmaUpgrades>
+      <SmaUpgrade>
+        <SmaArticleName>EXT SMA for Sensor Driver ARAMIS</SmaArticleName>
+        <SapUpgradeNr>SAP-UPG</SapUpgradeNr>
+        <LicenseArticleName>2026 Sensor Driver ARAMIS</LicenseArticleName>
+      </SmaUpgrade>
+      <SmaUpgrade>
+        <SmaArticleName>EXT SMA for Sensor Driver ARAMIS Offline</SmaArticleName>
+        <SapUpgradeNr>SAP-UPG-OFFLINE</SapUpgradeNr>
+        <LicenseArticleName>2026 Sensor Driver ARAMIS Offline</LicenseArticleName>
+      </SmaUpgrade>
+    </SmaUpgrades>
+  </SmaUpgradesData>
+  <ConfigurationItemsData>`
+    )
+  const lapsePdb = () => catalogContainer(LAPSE_CONFIG)
+  const renewal = (articles: string[], sapNrs: string[], endOldContract = '2022-12', startNewContract = '2026-11') => ({
+    ...BLOCK,
+    items: [{ type: 'sma' as const, dongleId: '2-1234567', endOldContract, startNewContract, months: 12, articles, sapNrs }],
+  })
+
+  it('leaves the upgrade to GPC and renews the agreement', () => {
+    const plan = planOrderBlock(
+      renewal(['Upgr. for Sensor Driver ARAMIS', 'EXT SMA for Sensor Driver ARAMIS'], ['SAP-UPG', 'SAP-SMA']),
+      lapsePdb()
+    )
+    expect(plan.ok).toBe(true)
+    expect(plan.items[0].resolved).toMatchObject({
+      kind: 'sma',
+      articleNames: ['EXT SMA for Sensor Driver ARAMIS'],
+      upgrades: ['2026 Sensor Driver ARAMIS'],
+    })
+    expect(plan.warnings.join('\n')).toContain(
+      '"Upgr. for Sensor Driver ARAMIS" is the upgrade GPC charges itself for lapsed cover on "EXT SMA for Sensor Driver ARAMIS"'
+    )
+    expect(describeItem(plan.items[0])).toContain('upgrade for lapsed cover: GPC adds it')
+  })
+
+  it('knows an upgrade by its number when the seller sends its own name', () => {
+    const plan = planOrderBlock(
+      renewal(['Upgrade for Sensor Driver ARAMIS (Trade-In)', 'EXT SMA for Sensor Driver ARAMIS'], ['SAP-UPG', 'SAP-SMA']),
+      lapsePdb()
+    )
+    expect(plan.items[0].resolved).toMatchObject({ articleNames: ['EXT SMA for Sensor Driver ARAMIS'] })
+  })
+
+  it('knows an upgrade the catalog does not list as an article', () => {
+    // PDB290's 666011-2026-332 is in SmaUpgradesData only.
+    const plan = planOrderBlock(
+      renewal(['Upgrade for Sensor Driver ARAMIS Offline (Trade-In)', 'EXT SMA for Sensor Driver ARAMIS'], ['SAP-UPG-OFFLINE', 'SAP-SMA']),
+      lapsePdb()
+    )
+    expect(plan.items[0].resolved).toMatchObject({ articleNames: ['EXT SMA for Sensor Driver ARAMIS'] })
+    // Its agreement is not on this dongle, so GPC will charge nothing for it.
+    expect(plan.warnings.join('\n')).toContain(
+      'is the upgrade for "EXT SMA for Sensor Driver ARAMIS Offline", which the block does not renew'
+    )
+  })
+
+  it('refuses a dongle that carries only an upgrade', () => {
+    const plan = planOrderBlock(renewal(['Upgr. for Sensor Driver ARAMIS'], ['SAP-UPG']), lapsePdb())
+    expect(plan.items[0].problem).toBe(
+      'Only an upgrade for lapsed cover, and no agreement. GPC charges the upgrade with its agreement — add "EXT SMA for Sensor Driver ARAMIS" to the block.'
+    )
+  })
+
+  it('says when GPC will charge no upgrade for the one the block carries', () => {
+    // The term picks up the month after the old one ended: nothing lapsed.
+    const plan = planOrderBlock(
+      renewal(['Upgr. for Sensor Driver ARAMIS', 'EXT SMA for Sensor Driver ARAMIS'], ['SAP-UPG', 'SAP-SMA'], '2026-07', '2026-08'),
+      lapsePdb()
+    )
+    expect(plan.ok).toBe(true)
+    expect(plan.warnings.join('\n')).toContain(
+      "cover ended 2026-07 and the term starts 2026-08, within the catalog's 0-month goodwill — GPC will not charge one"
+    )
+  })
+
+  it('applies the dongle with its agreement and nothing for the upgrade', () => {
+    const doc = parseOrderXml(new TextEncoder().encode(ORDER))
+    const pdb = lapsePdb()
+    const plan = planOrderBlock(
+      renewal(['Upgr. for Sensor Driver ARAMIS', 'EXT SMA for Sensor Driver ARAMIS'], ['SAP-UPG', 'SAP-SMA']),
+      pdb
+    )
+    const report = applyOrderBlockItems(doc, pdb, plan)
+    expect(report.failed).toEqual([])
+    const [dongle] = smaDongles(doc)
+    expect(dongle.dongleId).toBe('2-1234567')
+    expect(dongle.startNewContract).toBe('2026-11-01T00:00:00')
+    const xml = new TextDecoder().decode(serializeOrderXml(doc))
+    expect(xml).toContain('EXT SMA for Sensor Driver ARAMIS')
+    expect(xml).not.toContain('Upgr. for Sensor Driver ARAMIS')
+    expect(describeViolations(validateOrderXml(xml))).toBe('')
+  })
+})

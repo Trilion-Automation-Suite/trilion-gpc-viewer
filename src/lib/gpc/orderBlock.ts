@@ -18,7 +18,9 @@ import { readPdbConfig } from './blankOrder.ts'
 import { findArticle } from './addItem.ts'
 import { licenseOptions } from './licenses.ts'
 import type { LicenseOption } from './licenses.ts'
-import { MINIMUM_CONTRACT_MONTHS } from './contractTerm.ts'
+import { MINIMUM_CONTRACT_MONTHS, endOfMonth, renewalStart, startOfMonth } from './contractTerm.ts'
+import { missingMonths, reEntryTerms, upgradesBySap } from './reentry.ts'
+import type { UpgradeOf } from './reentry.ts'
 import { ENUM_VALUES } from './memberOrder.ts'
 import { listOptions } from './catalogIndex.ts'
 import { smaListName } from './sma.ts'
@@ -211,7 +213,17 @@ export interface ResolvedItem {
   resolved?:
     | { kind: 'article'; articleName: string; amount: number; note?: string }
     | { kind: 'license'; option: LicenseOption; userEmail?: string; userName?: string }
-    | { kind: 'sma'; item: SmaItem; articleNames: string[] }
+    | {
+        kind: 'sma'
+        item: SmaItem
+        articleNames: string[]
+        /**
+         * The licences the block's upgrade articles bring up to date. Not
+         * added: GPC charges the upgrade itself from the dates. Kept so the
+         * preview can say the block asked for one.
+         */
+        upgrades?: string[]
+      }
   /** Why it could not be matched. Shown to the operator; never silently dropped. */
   problem?: string
 }
@@ -305,6 +317,13 @@ export function planOrderBlock(
   const config = readPdbConfig(pdb)
   const bySap = articlesBySap(config)
   const licences = licenseOptions(config)
+  const upgradeBySap = upgradesBySap(config)
+  // By name too, for a block that sends the catalog's name without a number.
+  const upgradeByName = new Map<string, UpgradeOf>()
+  for (const [sap, of] of upgradeBySap) {
+    for (const name of bySap.get(sap) ?? []) upgradeByName.set(name, of)
+  }
+  const terms = reEntryTerms(config)
   const warnings: string[] = []
 
   if (block.catalog && openCatalog && block.catalog !== openCatalog) {
@@ -393,10 +412,17 @@ export function planOrderBlock(
         // lands on the right agreement, and says so.
         const offered = new Set(smaOptionNames(config))
         const names: string[] = []
+        const upgrades: Array<{ label: string; of: UpgradeOf }> = []
         for (let i = 0; i < given.length; i++) {
           const name = given[i]
           const sap = Array.isArray(item.sapNrs) ? item.sapNrs[i] : undefined
           const bySapName = sap ? (bySap.get(sap) ?? []).filter((n) => offered.has(n)) : []
+          // The upgrade GPC charges for lapsed cover is not an agreement: GPC
+          // works it out from the dates and the agreement it belongs to, and an
+          // order has nowhere to put one. A generator that sells it as its own
+          // line sends it anyway, so it is recognised and left to GPC rather
+          // than costing the whole dongle.
+          const upgrade = (sap ? upgradeBySap.get(sap) : undefined) ?? (name ? upgradeByName.get(name) : undefined)
           if (bySapName.length === 1) {
             if (name && name !== bySapName[0]) {
               warnings.push(`Dongle ${item.dongleId}: "${name}" is "${bySapName[0]}" in this catalog (SAP ${sap}); using the catalog's name.`)
@@ -406,6 +432,8 @@ export function planOrderBlock(
             names.push(name)
           } else if (name && offered.has(name)) {
             names.push(name)
+          } else if (upgrade) {
+            upgrades.push({ label: name || sap || '(upgrade)', of: upgrade })
           } else {
             return {
               index,
@@ -416,10 +444,47 @@ export function planOrderBlock(
             }
           }
         }
+        if (names.length === 0) {
+          const belongs = [...new Set(upgrades.map((u) => `"${u.of.smaArticleName}"`))].join(', ')
+          return {
+            index,
+            item,
+            problem: `Only an upgrade for lapsed cover, and no agreement. GPC charges the upgrade with its agreement — add ${belongs} to the block.`,
+          }
+        }
         if (item.months !== undefined && (!Number.isFinite(item.months) || item.months < MINIMUM_CONTRACT_MONTHS)) {
           return { index, item, problem: `A term is at least ${MINIMUM_CONTRACT_MONTHS} months; the block says ${JSON.stringify(item.months)}.` }
         }
-        return { index, item, resolved: { kind: 'sma', item, articleNames: names } }
+        // Each upgrade the block carries, against what GPC will actually
+        // charge: the operator compares the two, because the order the block
+        // came from was priced on the assumption that they agree.
+        const start = item.startNewContract ? startOfMonth(item.startNewContract) : renewalStart(item.endOldContract)
+        const lapse = missingMonths(
+          { endOldContract: endOfMonth(item.endOldContract), startNewContract: start, isOlderSelected: false },
+          terms.max
+        )
+        for (const u of upgrades) {
+          if (!names.includes(u.of.smaArticleName)) {
+            warnings.push(
+              `Dongle ${item.dongleId}: "${u.label}" is the upgrade for "${u.of.smaArticleName}", which the block does not renew — GPC charges an upgrade only with its agreement, so none will be charged for it.`
+            )
+          } else if (terms.factor === 0 || lapse <= terms.goodwill) {
+            warnings.push(
+              `Dongle ${item.dongleId}: the block carries "${u.label}", but cover ended ${item.endOldContract} and the term starts ${start.slice(0, 7)}` +
+              (terms.factor === 0 ? ', and this catalog charges no upgrade' : `, within the catalog's ${terms.goodwill}-month goodwill`) +
+              ' — GPC will not charge one. Check the price the order was quoted at.'
+            )
+          } else {
+            warnings.push(
+              `Dongle ${item.dongleId}: "${u.label}" is the upgrade GPC charges itself for lapsed cover on "${u.of.smaArticleName}" (to ${u.of.licenseArticleName}); it follows from the dates and is not added as a line.`
+            )
+          }
+        }
+        return {
+          index,
+          item,
+          resolved: { kind: 'sma', item, articleNames: names, upgrades: upgrades.map((u) => u.of.licenseArticleName) },
+        }
       }
       default:
         return { index, item, problem: `Unknown item type ${JSON.stringify((item as { type: string }).type)}.` }
@@ -481,7 +546,8 @@ export function describeItem(entry: ResolvedItem): string {
   }
   if (resolved?.kind === 'sma') {
     const term = resolved.item.months ? `, ${resolved.item.months} months` : ''
-    return `SMA on ${resolved.item.dongleId}${term}: ${resolved.articleNames.join(', ')}`
+    const upgrade = resolved.upgrades?.length ? ' (upgrade for lapsed cover: GPC adds it)' : ''
+    return `SMA on ${resolved.item.dongleId}${term}: ${resolved.articleNames.join(', ')}${upgrade}`
   }
   if (item && typeof item === 'object' && 'type' in item) {
     const named = (item as ArticleItem).name ?? (item as ArticleItem).sapNr ?? (item as SmaItem).dongleId
