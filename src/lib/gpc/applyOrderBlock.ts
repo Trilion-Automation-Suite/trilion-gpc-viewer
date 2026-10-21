@@ -166,6 +166,13 @@ export function applyOrderBlockItems(
           licenseUserName: resolved.item.licenseUserName || DEFAULT_LICENSE_USER.name,
         })
         report.added.push(`SMA on ${resolved.item.dongleId}: ${resolved.articleNames.join(', ')}`)
+        // The dongle landed without these; they are named so they can be added by hand.
+        for (const problem of entry.unmatched ?? []) {
+          report.failed.push({
+            what: `${describe(entry.index)} (dongle ${resolved.item.dongleId})`,
+            problem: `${problem} Added without it — add it by hand.`,
+          })
+        }
       }
     } catch (err) {
       report.failed.push({

@@ -78,6 +78,55 @@ function findUpgrade(config: ElementValue, smaArticleName: string):
   return null
 }
 
+/** What an upgrade SAP number brings up to date, from `SmaUpgradesData`. */
+export interface UpgradeOf {
+  /** The agreement GPC charges this upgrade with. */
+  smaArticleName: string
+  /** The licence it brings up to date — the current year's. */
+  licenseArticleName: string
+}
+
+/**
+ * Every upgrade the catalog charges for lapsed cover, by its SAP number.
+ *
+ * Read from `SmaUpgradesData` rather than `ArticlesData`, because that is where
+ * GPC looks: PDB290 lists 87 upgrades there and only 32 of them as articles,
+ * so an upgrade is not something an order can carry as a line of its own.
+ */
+export function upgradesBySap(config: ElementValue): Map<string, UpgradeOf> {
+  const out = new Map<string, UpgradeOf>()
+  for (const row of kids(sub(sub(config, 'SmaUpgradesData') ?? config, 'SmaUpgrades'))) {
+    const sap = text(row, 'SapUpgradeNr')
+    const smaArticleName = text(row, 'SmaArticleName')
+    const licenseArticleName = text(row, 'LicenseArticleName')
+    if (!sap || !smaArticleName || !licenseArticleName) continue
+    if (!out.has(sap)) out.set(sap, { smaArticleName, licenseArticleName })
+  }
+  return out
+}
+
+/**
+ * The catalog's re-entry terms, without the price scans `upgradeCatalog` does:
+ * the share of the licence price, the months of lapse it forgives, and the
+ * cap on the months counted.
+ */
+export function reEntryTerms(config: ElementValue): { factor: number; goodwill: number; max: number } {
+  return {
+    factor: parameter(config, 'ReEntryFactor', 0),
+    goodwill: parameter(config, 'GoodwillMonths', 0),
+    max: parameter(config, 'MaxFurtherPurchasePriceInMonth', 36),
+  }
+}
+
+/**
+ * How many months back a new term may start (`ContractStartDatePastValueInMonth`,
+ * 6 in PDB290), or null when the catalog does not say.
+ */
+export function contractStartPastMonths(config: ElementValue): number | null {
+  const n = parameter(config, 'ContractStartDatePastValueInMonth', NaN)
+  return Number.isFinite(n) ? n : null
+}
+
 /**
  * Months of cover missed, GPC's way.
  *
